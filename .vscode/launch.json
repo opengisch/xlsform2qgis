@@ -1,0 +1,15 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+
+        {
+            "name": "Python Debugger: Python File with QGIS support (Linux)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "env": {
+                "PYTHONPATH": "/usr/lib/python3/dist-packages/:${env:PYTHONPATH}"
+            }
+        }
+    ]
+}
