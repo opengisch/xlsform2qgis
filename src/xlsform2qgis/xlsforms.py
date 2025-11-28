@@ -1,6 +1,7 @@
 import os
 import re
 import shutil
+import sys
 import unicodedata
 from html.parser import HTMLParser
 from io import StringIO
@@ -42,11 +43,10 @@ from qgis.core import (
 )
 from qgis.PyQt.QtCore import QMetaType, QObject, QSize, pyqtSignal
 
-MARKDOWN_AVAILABLE = True
 try:
     import markdown
 except ImportError:
-    MARKDOWN_AVAILABLE = False
+    pass
 
 
 class HTMLStripper(HTMLParser):
@@ -57,8 +57,8 @@ class HTMLStripper(HTMLParser):
         self.convert_charrefs = True
         self.text = StringIO()
 
-    def handle_data(self, d):
-        self.text.write(d)
+    def handle_data(self, data):
+        self.text.write(data)
 
     def get_data(self):
         return self.text.getvalue()
@@ -73,13 +73,13 @@ def strip_tags(html):
 class XLSFormConverter(QObject):
     xlsx_form_file = ""
 
-    survey_layer = None
-    choices_layer = None
-    settings_layer = None
+    survey_layer: QgsVectorLayer
+    choices_layer: QgsVectorLayer
+    settings_layer: QgsVectorLayer
 
     output_field = None
     output_extent = None
-    output_project = None
+    output_project: QgsProject
 
     custom_title = None
     preferred_language = None
@@ -599,6 +599,8 @@ class XLSFormConverter(QObject):
                 type_details[0] == "select_one_from_file"
                 or type_details[0] == "select_multiple_from_file"
             ):
+                list_name = ""
+
                 if len(type_details) >= 2:
                     list_name = "list_" + " ".join(type_details[1:])
                     if self.survey_parameters_index >= 0:
@@ -1142,6 +1144,8 @@ class XLSFormConverter(QObject):
             )
             return
 
+        assert self.choices_layer
+
         if self.choices_layer.isValid():
             fields = self.choices_layer.fields().names()
             if fields[0] == "Field1":
@@ -1404,7 +1408,9 @@ class XLSFormConverter(QObject):
                     feature_name, current_container[-1]
                 )
 
-                if MARKDOWN_AVAILABLE:
+                if "markdown" in sys.modules:
+                    assert markdown  # type: ignore
+
                     feature_label = markdown.markdown(feature_label)
 
                 editor_text.setText(
