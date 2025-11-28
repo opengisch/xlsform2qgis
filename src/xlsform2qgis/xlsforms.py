@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import os
 import re
 import shutil
@@ -1743,3 +1744,10 @@ class XLSFormConverter(QObject):
         self.output_project.write(output_project_file)
 
         return output_project_file
+
+
+if __name__ == "__main__":
+    _script_name, input_xlsform, output_directory = sys.argv
+
+    converter = XLSFormConverter(input_xlsform)
+    converter.convert(output_directory)

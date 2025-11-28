@@ -10,6 +10,15 @@
             "env": {
                 "PYTHONPATH": "/usr/lib/python3/dist-packages/:${env:PYTHONPATH}"
             }
+        },
+        {
+            "name": "Python Debugger: Attach",
+            "type": "debugpy",
+            "request": "attach",
+            "connect": {
+                "host": "localhost",
+                "port": 5678
+            }
         }
     ]
 }

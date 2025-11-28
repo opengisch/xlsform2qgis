@@ -8,3 +8,8 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Testing and QGIS related files
+output
+symbology-style.db
+poetry.lock
