@@ -266,7 +266,11 @@ class XLSFormConverter(QObject):
 
     def is_valid(self):
         # Missing the one layer that must be available
-        if not self.survey_layer or not self.survey_layer.isValid():
+        if (
+            not hasattr(self, "survey_layer")
+            or not self.survey_layer
+            or not self.survey_layer.isValid()
+        ):
             return False
 
         # Missing the two basic parameters that must be present within the survey layer
