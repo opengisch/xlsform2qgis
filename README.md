@@ -24,10 +24,11 @@ uv run xlsform2qgis ./samples/service_rating.xlsx ./output/
 ## Development
 
 
-1. Clone the repository:
+1. Clone the repository and enter it's directory:
 
 ```
-git clone git@github.com:suricactus/xlsform2qgis.git
+git clone git@github.com:opengisch/xlsform2qgis.git
+cd xlsform2qgis
 ```
 
 2. This repository uses the [pre-commit](https://pre-commit.com) project. Install it on this project.
