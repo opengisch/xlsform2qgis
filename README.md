@@ -50,7 +50,7 @@ ln -s /usr/lib/python3/dist-packages/qgis .venv/lib/python3.12/site-packages/
 ln -s /usr/lib/python3/dist-packages/PyQt5 .venv/lib/python3.12/site-packages/
 ```
 
-5. OPTIONAL Add the `xlsform2qgis` library system wide in all Python scripts.
+5. OPTIONAL Add the `xlsform2qgis` library system wide in all Python scripts as editable module. This will allow developing `xlsform2qgis` in parallel with other projects, such as the [`XLSFormConverter QGIS Plugin`](https://github.com/opengisch/XLSFormConverter/).
 
 ```
 sudo uv pip install --system --break-system-packages --editable .
