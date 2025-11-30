@@ -9,7 +9,10 @@ wheels/
 # Virtual environments
 .venv
 
+# In case `uv` or `poetry` generates a lock file. In this project we do not need fixed lock files.
+uv.lock
+poetry.lock
+
 # Testing and QGIS related files
 output
 symbology-style.db
-poetry.lock

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import argparse
 import os
 import re
 import shutil
@@ -1750,8 +1751,21 @@ class XLSFormConverter(QObject):
         return output_project_file
 
 
-if __name__ == "__main__":
-    _script_name, input_xlsform, output_directory = sys.argv
+def main():
+    parser = argparse.ArgumentParser(description="Convert an XLSForm to a QGIS project")
+    parser.add_argument("input_xlsform", help="Path to the input XLSForm file")
+    parser.add_argument(
+        "output_directory", help="Directory to save the output QGIS project"
+    )
+
+    args = parser.parse_args()
+
+    input_xlsform = args.input_xlsform
+    output_directory = args.output_directory
 
     converter = XLSFormConverter(input_xlsform)
     converter.convert(output_directory)
+
+
+if __name__ == "__main__":
+    main()

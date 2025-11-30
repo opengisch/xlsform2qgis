@@ -14,23 +14,45 @@ converter = XLSFormConverter("input_xlsform.xls")
 converter.convert("output_qgis_directory")
 ```
 
+Or by running from the commandline:
+
+```
+uv run xlsform2qgis ./samples/service_rating.xlsx ./output/
+```
+
 
 ## Development
 
-```
-    git clone git@github.com:suricactus/xlsform2qgis.git
-```
 
-This repository uses the [pre-commit](https://pre-commit.com) project.
+1. Clone the repository:
 
 ```
-    pre-commit install
+git clone git@github.com:suricactus/xlsform2qgis.git
 ```
 
-This repository uses the [poetry](https://python-poetry.org) project.
+2. This repository uses the [pre-commit](https://pre-commit.com) project. Install it on this project.
 
 ```
-    poetry install
+pre-commit install
+```
+
+3. This repository uses the [uv](https://docs.astral.sh/uv) project. Create a new environment.
+
+```
+uv venv
+```
+
+4. Manually add the externally managed `PyQt5` and `qgis` libraries to your environment:
+
+```
+ln -s /usr/lib/python3/dist-packages/qgis .venv/lib/python3.12/site-packages/
+ln -s /usr/lib/python3/dist-packages/PyQt5 .venv/lib/python3.12/site-packages/
+```
+
+5. OPTIONAL Add the `xlsform2qgis` library system wide in all Python scripts.
+
+```
+sudo uv pip install --system --break-system-packages --editable .
 ```
 
 
@@ -39,5 +61,5 @@ This repository uses the [poetry](https://python-poetry.org) project.
 If you are using VS Code and want to debug test and debug the project, run:
 
 ```
-    poetry run python3 -m debugpy --listen 5678 --wait-for-client ./src/xlsform2qgis/xlsforms.py ./output/
+uv run python3 -m debugpy --listen 5678 --wait-for-client ./src/xlsform2qgis/xlsforms.py ./samples/service_rating.xlsx ./output/
 ```

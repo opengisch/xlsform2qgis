@@ -11,14 +11,9 @@ requires-python = ">=3.10,<4.0"
 dependencies = [
 ]
 
-[tool.poetry]
-packages = [
-    {include = "xlsform2qgis", from = "src"},
-]
-
 [build-system]
-requires = ["poetry-core>=2.0.0,<3.0.0"]
-build-backend = "poetry.core.masonry.api"
+requires = ["uv_build>=0.9.13,<0.10.0"]
+build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
@@ -28,5 +23,5 @@ dev = [
     "debugpy (>=1.8.17,<2.0.0)",
 ]
 
-[tool.poetry.group.dev]
-optional = true
+[project.scripts]
+xlsform2qgis = "xlsform2qgis.xlsform2qgis:main"
