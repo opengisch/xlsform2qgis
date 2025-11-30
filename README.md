@@ -64,3 +64,18 @@ If you are using VS Code and want to debug test and debug the project, run:
 ```
 uv run python3 -m debugpy --listen 5678 --wait-for-client ./src/xlsform2qgis/converter.py ./samples/service_rating.xlsx ./output/
 ```
+
+
+## Testing
+
+To run all tests:
+
+```
+uv run pytest
+```
+
+To run a specific test:
+
+```
+uv run pytest -k test_converter
+```
