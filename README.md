@@ -8,7 +8,7 @@ You can use the library by simply importing:
 
 ```python
 
-from xlsform2qgis.xlsforms import XLSFormConverter
+from xlsform2qgis.converter import XLSFormConverter
 
 converter = XLSFormConverter("input_xlsform.xls")
 converter.convert("output_qgis_directory")

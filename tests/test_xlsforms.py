@@ -5,7 +5,7 @@ from qgis.core import (
     Qgis,
     QgsProject,
 )
-from xlsform2qgis.xlsforms import XLSFormConverter, strip_tags
+from xlsform2qgis.converter import XLSFormConverter, strip_tags
 
 
 class TestHTMLStripper:
