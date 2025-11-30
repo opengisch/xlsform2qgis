@@ -75,9 +75,9 @@ def strip_tags(html):
 class XLSFormConverter(QObject):
     xlsx_form_file = ""
 
-    survey_layer: QgsVectorLayer
-    choices_layer: QgsVectorLayer
-    settings_layer: QgsVectorLayer
+    survey_layer: QgsVectorLayer | None = None
+    choices_layer: QgsVectorLayer | None = None
+    settings_layer: QgsVectorLayer | None = None
 
     output_field = None
     output_extent = None
@@ -86,7 +86,7 @@ class XLSFormConverter(QObject):
     custom_title = None
     preferred_language = None
     basemap = None
-    crs = QgsCoordinateReferenceSystem("EPSG:3857")
+    crs: QgsCoordinateReferenceSystem
     extent = QgsRectangle()
     geometries = None
     groups_as_tabs = False
@@ -168,6 +168,8 @@ class XLSFormConverter(QObject):
 
     def __init__(self, xlsx_form_file):
         QObject.__init__(self)
+        self.crs = QgsCoordinateReferenceSystem("EPSG:3857")
+
         if not os.path.isfile(xlsx_form_file):
             return
 
@@ -269,7 +271,7 @@ class XLSFormConverter(QObject):
         # Missing the one layer that must be available
         if (
             not hasattr(self, "survey_layer")
-            or not self.survey_layer
+            or self.survey_layer is None
             or not self.survey_layer.isValid()
         ):
             return False
@@ -414,8 +416,8 @@ class XLSFormConverter(QObject):
                         field_constraint_expression, field_constraint_message
                     )
                     field_constraints.setConstraintStrength(
-                        QgsFieldConstraints.ConstraintExpression,
-                        QgsFieldConstraints.ConstraintStrengthHard,
+                        QgsFieldConstraints.Constraint.ConstraintExpression,
+                        QgsFieldConstraints.ConstraintStrength.ConstraintStrengthHard,
                     )
 
             if self.survey_required_index >= 0:
@@ -427,12 +429,12 @@ class XLSFormConverter(QObject):
 
                 if field_required == "yes":
                     field_constraints.setConstraint(
-                        QgsFieldConstraints.ConstraintNotNull,
-                        QgsFieldConstraints.ConstraintOriginLayer,
+                        QgsFieldConstraints.Constraint.ConstraintNotNull,
+                        QgsFieldConstraints.ConstraintOrigin.ConstraintOriginLayer,
                     )
                     field_constraints.setConstraintStrength(
-                        QgsFieldConstraints.ConstraintNotNull,
-                        QgsFieldConstraints.ConstraintStrengthHard,
+                        QgsFieldConstraints.Constraint.ConstraintNotNull,
+                        QgsFieldConstraints.ConstraintStrength.ConstraintStrengthHard,
                     )
 
             field.setConstraints(field_constraints)
@@ -450,12 +452,17 @@ class XLSFormConverter(QObject):
 
         writer_options = QgsVectorFileWriter.SaveVectorOptions()
         writer_options.actionOnExistingFile = (
-            QgsVectorFileWriter.CreateOrOverwriteLayer
+            QgsVectorFileWriter.ActionOnExistingFile.CreateOrOverwriteLayer
             if os.path.isfile(self.output_file)
-            else QgsVectorFileWriter.CreateOrOverwriteFile
+            else QgsVectorFileWriter.ActionOnExistingFile.CreateOrOverwriteFile
         )
         writer_options.layerName = "survey" if not name else name
         writer_options.fileEncoding = "utf-8"
+
+        project = QgsProject.instance()
+
+        assert project
+
         QgsVectorFileWriter.create(
             self.output_file,
             layer_fields,
@@ -463,7 +470,7 @@ class XLSFormConverter(QObject):
             QgsCoordinateReferenceSystem("EPSG:4326")
             if self.crs.authid() == "EPSG:3857"
             else self.crs,
-            QgsProject.instance().transformContext(),
+            project.transformContext(),
             writer_options,
         )
 
@@ -473,7 +480,7 @@ class XLSFormConverter(QObject):
             "ogr",
         )
         if name:
-            layer.setFlags(QgsMapLayer.Private)
+            layer.setFlags(QgsMapLayer.LayerFlag.Private)
         layer.setDefaultValueDefinition(
             layer.fields().indexOf("uuid"), QgsDefaultValue("uuid()", False)
         )
@@ -488,14 +495,14 @@ class XLSFormConverter(QObject):
                 )
                 if (
                     layer_field.constraints().constraintStrength(
-                        QgsFieldConstraints.ConstraintNotNull
+                        QgsFieldConstraints.Constraint.ConstraintNotNull
                     )
-                    == QgsFieldConstraints.ConstraintStrengthHard
+                    == QgsFieldConstraints.ConstraintStrength.ConstraintStrengthHard
                 ):
                     layer.setFieldConstraint(
                         field_index,
-                        QgsFieldConstraints.ConstraintNotNull,
-                        QgsFieldConstraints.ConstraintStrengthHard,
+                        QgsFieldConstraints.Constraint.ConstraintNotNull,
+                        QgsFieldConstraints.ConstraintStrength.ConstraintStrengthHard,
                     )
 
         layer.setCustomProperty("QFieldSync/cloud_action", "offline")
@@ -699,6 +706,8 @@ class XLSFormConverter(QObject):
         return editor_widget
 
     def detect_geometry(self, child_name=None):
+        assert self.survey_layer is not None
+
         geometry = Qgis.WkbType.NoGeometry
 
         current_child_name = []
@@ -707,7 +716,7 @@ class XLSFormConverter(QObject):
             feature = QgsFeature()
             it.nextFeature(feature)
 
-        for feature in it:
+        for feature in it:  # type: ignore
             feature_type = str(feature.attribute(self.survey_type_index)).strip()
             if feature_type == "begin repeat":
                 current_child_name.append(feature.attribute(self.survey_name_index))
@@ -733,6 +742,8 @@ class XLSFormConverter(QObject):
         return geometry
 
     def detect_fields(self, child_name=None):
+        assert self.survey_layer is not None
+
         fields = QgsFields()
 
         fields.append(QgsField("uuid", QMetaType.Type.QString))
@@ -745,7 +756,7 @@ class XLSFormConverter(QObject):
             feature = QgsFeature()
             it.nextFeature(feature)
 
-        for feature in it:
+        for feature in it:  # type: ignore
             feature_type = str(feature.attribute(self.survey_type_index)).strip()
             feature_name = str(feature.attribute(self.survey_name_index)).strip()
             if feature_type == "begin repeat" or feature_type == "begin_repeat":
@@ -815,11 +826,15 @@ class XLSFormConverter(QObject):
     def convert_choices(
         self, list_name, features, output_lists_field_names, output_lists_fields
     ):
+        project = QgsProject.instance()
+
+        assert project
+
         writer_options = QgsVectorFileWriter.SaveVectorOptions()
         writer_options.actionOnExistingFile = (
-            QgsVectorFileWriter.CreateOrOverwriteLayer
+            QgsVectorFileWriter.ActionOnExistingFile.CreateOrOverwriteLayer
             if os.path.isfile(self.output_file)
-            else QgsVectorFileWriter.CreateOrOverwriteFile
+            else QgsVectorFileWriter.ActionOnExistingFile.CreateOrOverwriteFile
         )
         writer_options.layerName = "list_" + list_name
         writer_options.fileEncoding = "utf-8"
@@ -828,9 +843,11 @@ class XLSFormConverter(QObject):
             output_lists_fields,
             Qgis.WkbType.NoGeometry,
             QgsCoordinateReferenceSystem(4326),
-            QgsProject.instance().transformContext(),
+            project.transformContext(),
             writer_options,
         )
+
+        assert output_lists_sink
 
         # Add pseudo-NULL value
         output_feature = QgsFeature(output_lists_fields)
@@ -852,11 +869,11 @@ class XLSFormConverter(QObject):
         output_lists_sink.flushBuffer()
         del output_lists_sink
         output_lists_layer = QgsVectorLayer(
-            self.output_file + "|layername=" + writer_options.layerName,
+            self.output_file + "|layername=" + str(writer_options.layerName),
             writer_options.layerName,
             "ogr",
         )
-        output_lists_layer.setFlags(QgsMapLayer.Private)
+        output_lists_layer.setFlags(QgsMapLayer.LayerFlag.Private)
         output_lists_layer.setCustomProperty("QFieldSync/cloud_action", "no_action")
         output_lists_layer.setCustomProperty("QFieldSync/action", "copy")
         self.output_project.addMapLayer(output_lists_layer)
@@ -886,7 +903,7 @@ class XLSFormConverter(QObject):
             del output_from_layer
             return False
 
-        output_from_layer.setFlags(QgsMapLayer.Private)
+        output_from_layer.setFlags(QgsMapLayer.LayerFlag.Private)
         output_from_layer.setCustomProperty("QFieldSync/cloud_action", "no_action")
         output_from_layer.setCustomProperty("QFieldSync/action", "copy")
         self.output_project.addMapLayer(output_from_layer)
@@ -1047,7 +1064,7 @@ class XLSFormConverter(QObject):
         self,
         output_directory,
     ):
-        if not self.survey_layer:
+        if self.survey_layer is None:
             return ""
 
         os.makedirs(os.path.abspath(output_directory), exist_ok=True)
@@ -1061,13 +1078,15 @@ class XLSFormConverter(QObject):
         # Project-wide image max-pixel parameter
         settings_max_pixels = 0
 
+        assert self.settings_layer is not None
+
         if self.settings_layer.isValid():
             it = self.settings_layer.getFeatures()
             if self.settings_skip_first:
                 feature = QgsFeature()
                 it.nextFeature(feature)
 
-            for feature in it:
+            for feature in it:  # type: ignore
                 if self.settings_form_title_index >= 0 and feature.attribute(
                     self.settings_form_title_index
                 ):
@@ -1150,7 +1169,7 @@ class XLSFormConverter(QObject):
             )
             return
 
-        assert self.choices_layer
+        assert self.choices_layer is not None
 
         if self.choices_layer.isValid():
             fields = self.choices_layer.fields().names()
@@ -1217,7 +1236,7 @@ class XLSFormConverter(QObject):
             feature = QgsFeature()
             it.nextFeature(feature)
 
-        for feature in it:
+        for feature in it:  # type: ignore
             list_name = feature.attribute(self.choices_list_name_index)
             if not list_name:
                 continue
@@ -1238,7 +1257,7 @@ class XLSFormConverter(QObject):
             feature = QgsFeature()
             it.nextFeature(feature)
 
-        for feature in it:
+        for feature in it:  # type: ignore
             feature_type = (
                 str(feature.attribute(self.survey_type_index)).strip().lower()
             )
@@ -1263,7 +1282,12 @@ class XLSFormConverter(QObject):
         self.output_project.addMapLayer(current_layer[-1])
 
         current_editor_form = [current_layer[-1].editFormConfig()]
-        current_editor_form[-1].invisibleRootContainer().clear()
+        invisible_root = current_editor_form[-1].invisibleRootContainer()
+
+        assert invisible_root is not None
+
+        invisible_root.clear()
+
         current_editor_form[-1].setLayout(Qgis.AttributeFormLayout.DragAndDrop)
 
         current_editor_group_level = [0]
@@ -1274,9 +1298,12 @@ class XLSFormConverter(QObject):
             )
         ]
         current_container[-1].setType(Qgis.AttributeEditorContainerType.Tab)
-        current_editor_form[-1].invisibleRootContainer().addChildElement(
-            current_container[-1]
-        )
+
+        invisible_root = current_editor_form[-1].invisibleRootContainer()
+
+        assert invisible_root is not None
+
+        invisible_root.addChildElement(current_container[-1])
 
         relation_context = QgsRelationContext(self.output_project)
 
@@ -1285,7 +1312,7 @@ class XLSFormConverter(QObject):
             feature = QgsFeature()
             it.nextFeature(feature)
 
-        for feature in it:
+        for feature in it:  # type: ignore
             if not feature.attribute(self.survey_type_index):
                 continue
 
@@ -1327,7 +1354,11 @@ class XLSFormConverter(QObject):
                 self.output_project.addMapLayer(current_layer[-1])
 
                 current_editor_form.append(current_layer[-1].editFormConfig())
-                current_editor_form[-1].invisibleRootContainer().clear()
+                invisible_root = current_editor_form[-1].invisibleRootContainer()
+
+                assert invisible_root is not None
+
+                invisible_root.clear()
                 current_editor_form[-1].setLayout(Qgis.AttributeFormLayout.DragAndDrop)
 
                 current_editor_group_level.append(0)
@@ -1338,9 +1369,11 @@ class XLSFormConverter(QObject):
                     )
                 )
                 current_container[-1].setType(Qgis.AttributeEditorContainerType.Tab)
-                current_editor_form[-1].invisibleRootContainer().addChildElement(
-                    current_container[-1]
-                )
+                invisible_root = current_editor_form[-1].invisibleRootContainer()
+
+                assert invisible_root is not None
+
+                invisible_root.addChildElement(current_container[-1])
 
                 relation = QgsRelation(relation_context)
                 relation.setName(feature_name)
@@ -1348,7 +1381,12 @@ class XLSFormConverter(QObject):
                 relation.setReferencingLayer(current_layer[-1].id())
                 relation.addFieldPair("uuid_parent", "uuid")
                 relation.generateId()
-                self.output_project.relationManager().addRelation(relation)
+
+                relation_manager = self.output_project.relationManager()
+
+                assert relation_manager is not None
+
+                relation_manager.addRelation(relation)
 
                 editor_relation = QgsAttributeEditorRelation(
                     feature_name,
@@ -1385,9 +1423,11 @@ class XLSFormConverter(QObject):
                         current_container[-1].setVisibilityExpression(
                             QgsOptionalExpression(QgsExpression(relevant_expression))
                         )
-                    current_editor_form[-1].invisibleRootContainer().addChildElement(
-                        current_container[-1]
-                    )
+                    invisible_root = current_editor_form[-1].invisibleRootContainer()
+
+                    assert invisible_root is not None
+
+                    invisible_root.addChildElement(current_container[-1])
                     current_editor_group_level[-1] = current_editor_group_level[-1] + 1
                 else:
                     current_container.append(
@@ -1734,11 +1774,13 @@ class XLSFormConverter(QObject):
         self.output_extent = survey_extent
 
         if self.output_project.crs().authid() == "EPSG:3857":
+            display_settings = self.output_project.displaySettings()
+
+            assert display_settings
+
             # Display coordinates in WGS84 to provide a more useful experience for the average person
-            self.output_project.displaySettings().setCoordinateType(
-                Qgis.CoordinateDisplayType.CustomCrs
-            )
-            self.output_project.displaySettings().setCoordinateCustomCrs(
+            display_settings.setCoordinateType(Qgis.CoordinateDisplayType.CustomCrs)
+            display_settings.setCoordinateCustomCrs(
                 QgsCoordinateReferenceSystem("EPSG:4326")
             )
 
@@ -1767,5 +1809,19 @@ def main():
     converter.convert(output_directory)
 
 
+def main_cli():
+    from xlsform2qgis.qgis_utils import start_app, stop_app
+
+    try:
+        start_app()
+        main()
+        print("Success!")
+    except Exception as e:
+        print(f"Failed to start QGIS application: {e}")
+        sys.exit(1)
+    finally:
+        stop_app()
+
+
 if __name__ == "__main__":
-    main()
+    main_cli()

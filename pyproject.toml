@@ -24,4 +24,4 @@ dev = [
 ]
 
 [project.scripts]
-xlsform2qgis = "xlsform2qgis.converter:main"
+xlsform2qgis = "xlsform2qgis.converter:main_cli"
