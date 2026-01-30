@@ -258,6 +258,7 @@ class ParsedSheet:
 def extract(
     xlsform_filename: PathOrStr,
 ) -> tuple[ParsedSheet, ParsedSheet, ParsedSheet]:
+    """Extract the survey, choices and settings sheets from the given XLSForm file."""
     xlsform_filename = Path(xlsform_filename)
     if not xlsform_filename.exists():
         raise FileNotFoundError(f"XLSForm file not found: {xlsform_filename}")
@@ -488,7 +489,6 @@ class XLSFormConverter(QObject):
             # no compatibility warnings, horray!
             pass
 
-    # def convert(self, output_dir: PathOrStr) -> None:
     def convert(self) -> None:
         assert self.survey_sheet
         assert self.settings_sheet
@@ -811,6 +811,22 @@ class XlsFormExpression:
 
     def to_string(self) -> str:
         return self.xlsform_expression
+
+    def to_qgis(
+        self,
+        field_name: str | None = None,
+        use_insert: bool = False,
+        use_current_value: bool = False,
+        calculate_expressions: dict[str, str] = {},
+    ) -> str:
+        # TODO @suricactus: the xlsform_to_qgis_expression function is duplicated, we shall use this method instead everywhere
+        return xlsform_to_qgis_expression(
+            self.xlsform_expression,
+            field_name,
+            use_insert,
+            use_current_value,
+            calculate_expressions,
+        )
 
     def is_dynamic(self) -> bool:
         return bool(re.search(r"\$\{([^}]+)}", self.xlsform_expression))
