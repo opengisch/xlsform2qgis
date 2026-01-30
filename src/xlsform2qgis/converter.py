@@ -171,8 +171,8 @@ class ParsedRow:
         layer: WeakLayerDef | None = None,
         relation: dict[str, Any] | None = None,
         field: WeakFieldDef | None = None,
-        form_item: WeakFormItemDef | None = None,
-        container: dict[str, Any] | None = None,
+        form_field: WeakFormItemDef | None = None,
+        form_container: dict[str, Any] | None = None,
         geometry: Qgis.WkbType | None = None,
         group_status: GroupStatus = GroupStatus.NONE,
         layer_status: LayerStatus = LayerStatus.NONE,
@@ -180,8 +180,8 @@ class ParsedRow:
         self.layer = layer or {}
         self.relation = relation or {}
         self.field = field or {}
-        self.form_item = form_item or {}
-        self.container = container or {}
+        self.form_field = form_field or {}
+        self.form_container = form_container or {}
         self.geometry = geometry
         self.group_status = group_status
         self.layer_status = layer_status
@@ -604,9 +604,9 @@ class XLSFormConverter(QObject):
         # Determine the parent id for the current form item.
         # If `group_status` is `GroupStatus.END``, then the last parent id is popped from the stack and no new element is added.
         if parsed_row.group_status == GroupStatus.BEGIN:
-            self.parent_ids.append(parsed_row.container["id"])
+            self.parent_ids.append(parsed_row.form_container["id"])
             # alternatively, we could do call get_form recursively:
-            # self.get_form(parsed_row.container["id"])
+            # self.get_form(parsed_row.form_container["id"])
         elif parsed_row.group_status == GroupStatus.END:
             self.parent_ids.pop()
 
@@ -626,7 +626,7 @@ class XLSFormConverter(QObject):
         if parsed_row.layer:
             assert parsed_row.layer_status == LayerStatus.BEGIN
             assert parsed_row.group_status == GroupStatus.BEGIN
-            assert parsed_row.container
+            assert parsed_row.form_container
 
             self.layers.append(
                 generate_layer_def(
@@ -642,18 +642,18 @@ class XLSFormConverter(QObject):
             )
             form_items.append(
                 generate_form_item_def(
-                    **{**form_item_default, **parsed_row.form_item},
+                    **{**form_item_default, **parsed_row.form_field},
                     parent_id=parent_id,
                     type="field",
                 )
             )
 
-        elif parsed_row.container:
+        elif parsed_row.form_container:
             form_items.append(
                 generate_form_item_def(
                     **{
                         **form_item_default,
-                        **parsed_row.container,
+                        **parsed_row.form_container,
                         "parent_id": parent_id,
                         "type": "group_box",
                     },
@@ -989,7 +989,7 @@ def widget_calculate(converter: XLSFormConverter, row: dict[str, Any]) -> Parsed
             "widget_type": "TextEdit",
             **form_item,  # type: ignore
         },
-        form_item={
+        form_field={
             "is_read_only": True,
             "show_label": False,
         },
@@ -1013,7 +1013,7 @@ def widget_hidden(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow
             "widget_type": "Hidden",
             **field,  # type: ignore
         },
-        form_item={
+        form_field={
             "is_read_only": True,
             "show_label": False,
         },
@@ -1028,7 +1028,7 @@ def widget_today(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow:
             "default_value": "format_date(now(), 'yyyy-MM-dd'",
             "set_default_value_on_update": False,
         },
-        form_item={
+        form_field={
             "show_label": False,
             "is_read_only": True,
         },
@@ -1043,7 +1043,7 @@ def widget_start(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow:
             "default_value": "format_date(now(), 'yyyy-MM-dd hh:mm:ss')",
             "set_default_value_on_update": False,
         },
-        form_item={
+        form_field={
             "show_label": False,
             "is_read_only": True,
         },
@@ -1058,7 +1058,7 @@ def widget_end(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow:
             "default_value": "format_date(now(), 'yyyy-MM-dd hh:mm:ss')",
             "set_default_value_on_update": True,
         },
-        form_item={
+        form_field={
             "show_label": False,
             "is_read_only": True,
         },
@@ -1073,7 +1073,7 @@ def widget_username(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedR
             "default_value": "@cloud_username",
             "set_default_value_on_update": False,
         },
-        form_item={
+        form_field={
             "show_label": False,
             "is_read_only": True,
         },
@@ -1088,7 +1088,7 @@ def widget_email(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow:
             "default_value": "@cloud_useremail",
             "set_default_value_on_update": False,
         },
-        form_item={
+        form_field={
             "show_label": False,
             "is_read_only": True,
         },
@@ -1323,7 +1323,7 @@ def widget_begin_group(converter: XLSFormConverter, row: dict[str, Any]) -> Pars
         visibility_expression = ""
 
     return ParsedRow(
-        container={
+        form_container={
             "id": container_id,
             "name": label,
             # NOTE in the original converter, we cannot have tabs if we are on level 2
@@ -1348,7 +1348,7 @@ def widget_note(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow:
     visibility_expression = xlsform_to_qgis_expression(row["relevant"])
 
     return ParsedRow(
-        container={
+        form_container={
             "id": container_id,
             "name": label,
             "type": "group_box",
@@ -1393,7 +1393,7 @@ def widget_begin_repeat(converter: XLSFormConverter, row: dict[str, Any]) -> Par
         ],
     }
 
-    form_item: WeakFormItemDef = {
+    form_field: WeakFormItemDef = {
         "id": f"relation_{row['idx']}",
         "name": strip_tags(row["label"]),
         "type": "relation",
@@ -1402,8 +1402,8 @@ def widget_begin_repeat(converter: XLSFormConverter, row: dict[str, Any]) -> Par
     return ParsedRow(
         layer=layer,
         relation=relation,
-        form_item=form_item,
-        container={
+        form_field=form_field,
+        form_container={
             "id": f"item_container_{row['idx']}",
             "name": strip_tags(row["label"]),
             "type": "group_box",
