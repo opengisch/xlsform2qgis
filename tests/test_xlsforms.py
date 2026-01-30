@@ -231,6 +231,7 @@ class TestConverter:
         assert len(survey_layer["form_config"]) == 1
         assert survey_layer["form_config"][0] == generate_form_item_def(
             item_id=survey_layer["form_config"][0]["item_id"],
+            field_id=survey_layer["fields"][1]["field_id"],
             type="field",
         )
 
@@ -280,6 +281,7 @@ class TestConverter:
         )
         assert survey_layer["form_config"][1] == generate_form_item_def(
             item_id=survey_layer["form_config"][1]["item_id"],
+            field_id=survey_layer["fields"][1]["field_id"],
             parent_id="item_container_0",
             type="field",
         )
@@ -313,38 +315,38 @@ class TestConverter:
 
         assert len(converter.layers) == 1
 
-        field_defs = converter.layers[0]["fields"]
-        form_item_defs = converter.layers[0]["form_config"]
+        survey_layer = converter.layers[0]
 
-        assert len(field_defs) == 2
-        assert field_defs[0] == generate_field_def(
-            field_id=field_defs[0]["field_id"],
+        assert len(survey_layer["fields"]) == 2
+        assert survey_layer["fields"][0] == generate_field_def(
+            field_id=survey_layer["fields"][0]["field_id"],
             type="string",
             name="uuid",
             alias="UUID",
         )
-        assert field_defs[1] == generate_field_def(
-            field_id=field_defs[1]["field_id"],
+        assert survey_layer["fields"][1] == generate_field_def(
+            field_id=survey_layer["fields"][1]["field_id"],
             type="string",
             name="field_001_001",
             alias="Field 001_001",
             widget_type="TextEdit",
         )
 
-        assert len(form_item_defs) == 3
-        assert form_item_defs[0] == generate_form_item_def(
+        assert len(survey_layer["form_config"]) == 3
+        assert survey_layer["form_config"][0] == generate_form_item_def(
             item_id="item_container_0",
             name="Group 001",
             type="group_box",
         )
-        assert form_item_defs[1] == generate_form_item_def(
+        assert survey_layer["form_config"][1] == generate_form_item_def(
             item_id="item_container_1",
             name="Group 001_001",
             parent_id="item_container_0",
             type="group_box",
         )
-        assert form_item_defs[2] == generate_form_item_def(
-            item_id=form_item_defs[2]["item_id"],
+        assert survey_layer["form_config"][2] == generate_form_item_def(
+            item_id=survey_layer["form_config"][2]["item_id"],
+            field_id=survey_layer["fields"][1]["field_id"],
             parent_id="item_container_1",
             type="field",
         )
@@ -692,11 +694,13 @@ class TestConverter:
         )
         assert survey_layer["form_config"][2] == generate_form_item_def(
             item_id=survey_layer["form_config"][2]["item_id"],
+            field_id=survey_layer["fields"][1]["field_id"],
             parent_id="item_container_0",
             type="field",
         )
         assert survey_layer["form_config"][3] == generate_form_item_def(
             item_id=survey_layer["form_config"][3]["item_id"],
+            field_id=survey_layer["fields"][2]["field_id"],
             parent_id="item_container_0",
             type="field",
         )
@@ -714,36 +718,43 @@ class TestConverter:
         )
         assert survey_layer["form_config"][6] == generate_form_item_def(
             item_id=survey_layer["form_config"][6]["item_id"],
+            field_id=survey_layer["fields"][3]["field_id"],
             parent_id="item_container_7",
             type="field",
         )
         assert survey_layer["form_config"][7] == generate_form_item_def(
             item_id=survey_layer["form_config"][7]["item_id"],
+            field_id=survey_layer["fields"][4]["field_id"],
             parent_id="item_container_7",
             type="field",
         )
         assert survey_layer["form_config"][8] == generate_form_item_def(
             item_id=survey_layer["form_config"][8]["item_id"],
+            field_id=survey_layer["fields"][5]["field_id"],
             parent_id="item_container_7",
             type="field",
         )
         assert survey_layer["form_config"][9] == generate_form_item_def(
             item_id=survey_layer["form_config"][9]["item_id"],
+            field_id=survey_layer["fields"][6]["field_id"],
             parent_id="item_container_7",
             type="field",
         )
         assert survey_layer["form_config"][10] == generate_form_item_def(
             item_id=survey_layer["form_config"][10]["item_id"],
+            field_id=survey_layer["fields"][7]["field_id"],
             parent_id="item_container_7",
             type="field",
         )
         assert survey_layer["form_config"][11] == generate_form_item_def(
             item_id=survey_layer["form_config"][11]["item_id"],
+            field_id=survey_layer["fields"][8]["field_id"],
             parent_id="item_container_7",
             type="field",
         )
         assert survey_layer["form_config"][12] == generate_form_item_def(
             item_id=survey_layer["form_config"][12]["item_id"],
+            field_id=survey_layer["fields"][9]["field_id"],
             parent_id="item_container_6",
             type="field",
         )
@@ -760,16 +771,19 @@ class TestConverter:
         )
         assert survey_layer["form_config"][15] == generate_form_item_def(
             item_id=survey_layer["form_config"][15]["item_id"],
+            field_id=survey_layer["fields"][10]["field_id"],
             parent_id="item_container_18",
             type="field",
         )
         assert survey_layer["form_config"][16] == generate_form_item_def(
             item_id=survey_layer["form_config"][16]["item_id"],
+            field_id=survey_layer["fields"][11]["field_id"],
             parent_id="item_container_18",
             type="field",
         )
         assert survey_layer["form_config"][17] == generate_form_item_def(
             item_id=survey_layer["form_config"][17]["item_id"],
+            field_id=survey_layer["fields"][12]["field_id"],
             parent_id="item_container_17",
             type="field",
             is_read_only=True,
@@ -777,6 +791,7 @@ class TestConverter:
         )
         assert survey_layer["form_config"][18] == generate_form_item_def(
             item_id=survey_layer["form_config"][18]["item_id"],
+            field_id=survey_layer["fields"][13]["field_id"],
             parent_id="item_container_17",
             type="field",
         )
@@ -793,36 +808,43 @@ class TestConverter:
         )
         assert survey_layer["form_config"][21] == generate_form_item_def(
             item_id=survey_layer["form_config"][21]["item_id"],
+            field_id=survey_layer["fields"][14]["field_id"],
             parent_id="item_container_26",
             type="field",
         )
         assert survey_layer["form_config"][22] == generate_form_item_def(
             item_id=survey_layer["form_config"][22]["item_id"],
+            field_id=survey_layer["fields"][15]["field_id"],
             parent_id="item_container_26",
             type="field",
         )
         assert survey_layer["form_config"][23] == generate_form_item_def(
             item_id=survey_layer["form_config"][23]["item_id"],
+            field_id=survey_layer["fields"][16]["field_id"],
             parent_id="item_container_26",
             type="field",
         )
         assert survey_layer["form_config"][24] == generate_form_item_def(
             item_id=survey_layer["form_config"][24]["item_id"],
+            field_id=survey_layer["fields"][17]["field_id"],
             parent_id="item_container_26",
             type="field",
         )
         assert survey_layer["form_config"][25] == generate_form_item_def(
             item_id=survey_layer["form_config"][25]["item_id"],
+            field_id=survey_layer["fields"][18]["field_id"],
             parent_id="item_container_26",
             type="field",
         )
         assert survey_layer["form_config"][26] == generate_form_item_def(
             item_id=survey_layer["form_config"][26]["item_id"],
+            field_id=survey_layer["fields"][19]["field_id"],
             parent_id="item_container_26",
             type="field",
         )
         assert survey_layer["form_config"][27] == generate_form_item_def(
             item_id=survey_layer["form_config"][27]["item_id"],
+            field_id=survey_layer["fields"][20]["field_id"],
             parent_id="item_container_25",
             type="field",
         )

@@ -82,6 +82,7 @@ def generate_form_item_def(**kwargs) -> FormItemDef:
         FormItemDef,
         {
             "item_id": str(uuid.uuid4()),
+            "field_id": None,
             "name": "",
             "type": "group_box",
             "parent_id": None,

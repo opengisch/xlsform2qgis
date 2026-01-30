@@ -635,14 +635,14 @@ class XLSFormConverter(QObject):
             )
 
         if parsed_row.field:
-            fields.append(
-                generate_field_def(
-                    **{**field_default, **parsed_row.field},
-                )
+            field = generate_field_def(
+                **{**field_default, **parsed_row.field},
             )
+            fields.append(field)
             form_items.append(
                 generate_form_item_def(
                     **{**form_item_default, **parsed_row.form_field},
+                    field_id=field["field_id"],
                     parent_id=parent_id,
                     type="field",
                 )
