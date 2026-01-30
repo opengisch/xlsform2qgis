@@ -32,7 +32,7 @@ def generate_field_def(**kwargs) -> FieldDef:
     return cast(
         FieldDef,
         {
-            "id": str(uuid.uuid4()),
+            "field_id": str(uuid.uuid4()),
             "name": "",
             "type": "",
             "length": 0,
@@ -81,7 +81,7 @@ def generate_form_item_def(**kwargs) -> FormItemDef:
     return cast(
         FormItemDef,
         {
-            "id": str(uuid.uuid4()),
+            "item_id": str(uuid.uuid4()),
             "name": "",
             "type": "group_box",
             "parent_id": None,

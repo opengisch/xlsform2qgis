@@ -35,7 +35,7 @@ class PolymorphicRelationDef(TypedDict):
 
 
 class WeakFieldDef(TypedDict, total=False):
-    id: str
+    field_id: str
     name: str
     type: str
     length: int
@@ -61,7 +61,7 @@ class WeakFieldDef(TypedDict, total=False):
 
 
 class FieldDef(TypedDict):
-    id: str
+    field_id: str
     name: str
     type: str
     length: int
@@ -111,7 +111,7 @@ class VectorLayerDataprovider(StrEnum):
 
 
 class WeakFormItemDef(TypedDict, total=False):
-    id: str
+    item_id: str
     type: Literal["field", "relation", "group_box", "tab", "row", "text"]
     # TODO rename to `label`
     name: str
@@ -126,7 +126,7 @@ class WeakFormItemDef(TypedDict, total=False):
 
 
 class FormItemDef(TypedDict):
-    id: str
+    item_id: str
     type: Literal["field", "relation", "group_box", "tab", "row", "text"]
     # TODO rename to `label`
     name: str

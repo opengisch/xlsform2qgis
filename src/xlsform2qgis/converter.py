@@ -604,9 +604,9 @@ class XLSFormConverter(QObject):
         # Determine the parent id for the current form item.
         # If `group_status` is `GroupStatus.END``, then the last parent id is popped from the stack and no new element is added.
         if parsed_row.group_status == GroupStatus.BEGIN:
-            self.parent_ids.append(parsed_row.form_container["id"])
+            self.parent_ids.append(parsed_row.form_container["item_id"])
             # alternatively, we could do call get_form recursively:
-            # self.get_form(parsed_row.form_container["id"])
+            # self.get_form(parsed_row.form_container["item_id"])
         elif parsed_row.group_status == GroupStatus.END:
             self.parent_ids.pop()
 
@@ -1324,7 +1324,7 @@ def widget_begin_group(converter: XLSFormConverter, row: dict[str, Any]) -> Pars
 
     return ParsedRow(
         form_container={
-            "id": container_id,
+            "item_id": container_id,
             "name": label,
             # NOTE in the original converter, we cannot have tabs if we are on level 2
             "type": converter.form_group_type,
@@ -1349,7 +1349,7 @@ def widget_note(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow:
 
     return ParsedRow(
         form_container={
-            "id": container_id,
+            "item_id": container_id,
             "name": label,
             "type": "group_box",
             "visibility_expression": visibility_expression,
@@ -1394,7 +1394,7 @@ def widget_begin_repeat(converter: XLSFormConverter, row: dict[str, Any]) -> Par
     }
 
     form_field: WeakFormItemDef = {
-        "id": f"relation_{row['idx']}",
+        "item_id": f"relation_{row['idx']}",
         "name": strip_tags(row["label"]),
         "type": "relation",
     }
@@ -1404,7 +1404,7 @@ def widget_begin_repeat(converter: XLSFormConverter, row: dict[str, Any]) -> Par
         relation=relation,
         form_field=form_field,
         form_container={
-            "id": f"item_container_{row['idx']}",
+            "item_id": f"item_container_{row['idx']}",
             "name": strip_tags(row["label"]),
             "type": "group_box",
             "visibility_expression": xlsform_to_qgis_expression(row["relevant"]),
