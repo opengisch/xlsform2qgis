@@ -1,810 +1,792 @@
-#!/usr/bin/env python3
-import argparse
-import os
-import re
-import shutil
-import sys
-import unicodedata
-from html.parser import HTMLParser
-from io import StringIO
+from collections import defaultdict
+import logging
 from pathlib import Path
+from typing import (
+    Any,
+    Callable,
+    Iterable,
+    Iterator,
+    Literal,
+    cast,
+)
+from enum import StrEnum
+from qgis.PyQt.QtCore import QObject
+
+
+import re
 
 from qgis.core import (
     Qgis,
-    QgsAttributeEditorContainer,
-    QgsAttributeEditorField,
-    QgsAttributeEditorRelation,
-    QgsAttributeEditorTextElement,
-    QgsCoordinateReferenceSystem,
-    QgsCoordinateTransform,
-    QgsCsException,
-    QgsDefaultValue,
-    QgsEditFormConfig,
-    QgsEditorWidgetSetup,
     QgsExpression,
-    QgsFeature,
-    QgsFeatureRequest,
-    QgsFeatureSink,
-    QgsField,
-    QgsFieldConstraints,
-    QgsFields,
-    QgsMapLayer,
-    QgsMapSettings,
-    QgsOptionalExpression,
-    QgsProject,
-    QgsProperty,
-    QgsPropertyCollection,
-    QgsRasterLayer,
-    QgsRectangle,
-    QgsRelation,
-    QgsRelationContext,
-    QgsVectorFileWriter,
     QgsVectorLayer,
-    QgsVectorLayerUtils,
-    QgsWkbTypes,
 )
-from qgis.PyQt.QtCore import QMetaType, QObject, QSize, pyqtSignal
+from qgis.PyQt.QtCore import pyqtSignal, QVariant
 
-try:
-    import markdown
-except ImportError:
-    pass
+from xlsform2qgis.types import (
+    ConstraintStrength,
+    FieldDef,
+    LayerDef,
+    RelationDef,
+    WeakFieldDef,
+    WeakFormItemDef,
+    WeakLayerDef,
+    ChoicesDef,
+    AliasDef,
+    PathOrStr,
+    FormItemDef,
+)
+from xlsform2qgis.converter_utils import (
+    strip_tags,
+    generate_field_def,
+    generate_layer_def,
+    generate_form_item_def,
+)
+
+# try:
+#     import markdown
+# except ImportError:
+#     pass
 
 
-class HTMLStripper(HTMLParser):
-    def __init__(self):
-        super().__init__()
-        self.reset()
-        self.strict = False
-        self.convert_charrefs = True
-        self.text = StringIO()
-
-    def handle_data(self, data):
-        self.text.write(data)
-
-    def get_data(self):
-        return self.text.getvalue()
+logger = logging.getLogger(__name__)
 
 
-def strip_tags(html):
-    s = HTMLStripper()
-    s.feed(html)
-    return s.get_data()
+XLS_TYPES_MAP = {
+    "integer": "integer",
+    "decimal": "double",
+    "range": "double",
+    "date": "date",
+    "today": "date",
+    "time": "time",
+    "datetime": "datetime",
+    "start": "datetime",
+    "end": "datetime",
+    "acknowledge": "boolean",
+    "text": "string",
+    "barcode": "string",
+    "image": "string",
+    "audio": "string",
+    "background-audio": "string",
+    "video": "string",
+    "file": "string",
+    "select_one": "string",
+    "select_one_from_file": "string",
+    "select_multiple": "string",
+    "select_multiple_from_file": "string",
+    "rank": "string",
+    "calculate": "string",
+    "hidden": "string",
+}
+
+XLSFORM_COLS_BY_SHEET_NAME = {
+    "survey": [
+        "type",
+        "name",
+        "label",
+        "calculation",
+        "relevant",
+        "choice_filter",
+        "parameters",
+        "constraint",
+        "constraint_message",
+        "required",
+        "default",
+        "is_read_only",
+        "trigger",
+        "appearance",
+    ],
+    "choices": [
+        "list_name",
+        "name",
+        "label",
+    ],
+    "settings": [
+        "form_title",
+        "form_id",
+        "default_language",
+    ],
+}
+
+
+def parse_xlsform_range_parameters(
+    xlsform_parameters: str,
+) -> tuple[float, float, float]:
+    start_match = re.search(
+        r"start=\s*([0-9]+)", xlsform_parameters, flags=re.IGNORECASE
+    )
+    end_match = re.search(r"end=\s*([0-9]+)", xlsform_parameters, flags=re.IGNORECASE)
+    step_match = re.search(r"step=\s*([0-9]+)", xlsform_parameters, flags=re.IGNORECASE)
+
+    if start_match is None:
+        start = 0.0
+    else:
+        start = float(start_match.group(1))
+
+    if end_match is None:
+        end = 10.0
+    else:
+        end = float(end_match.group(1))
+
+    if step_match is None:
+        step = 1.0
+    else:
+        step = float(step_match.group(1))
+
+    return start, end, step
+
+
+def parse_xlsform_select_from_file_parameters(
+    xlsform_parameters: str,
+) -> tuple[str, str]:
+    match = re.search(r"(?:value)\s*=\s*([^\s]*)", xlsform_parameters)
+    if match:
+        list_key = match.group(1)
+    else:
+        list_key = "name"
+
+    match = re.search(r"(?:label)\s*=\s*([^\s]*)", xlsform_parameters)
+    if match:
+        list_value = match.group(1)
+    else:
+        list_value = "label"
+
+    return list_key, list_value
+
+
+class GroupStatus(StrEnum):
+    NONE = "none"
+    BEGIN = "start"
+    END = "end"
+
+
+class LayerStatus(StrEnum):
+    NONE = "none"
+    BEGIN = "start"
+    END = "end"
+
+
+class ParsedRow:
+    def __init__(
+        self,
+        layer: WeakLayerDef | None = None,
+        relation: dict[str, Any] | None = None,
+        field: WeakFieldDef | None = None,
+        form_item: WeakFormItemDef | None = None,
+        container: dict[str, Any] | None = None,
+        geometry: Qgis.WkbType | None = None,
+        group_status: GroupStatus = GroupStatus.NONE,
+        layer_status: LayerStatus = LayerStatus.NONE,
+    ) -> None:
+        self.layer = layer or {}
+        self.relation = relation or {}
+        self.field = field or {}
+        self.form_item = form_item or {}
+        self.container = container or {}
+        self.geometry = geometry
+        self.group_status = group_status
+        self.layer_status = layer_status
+
+
+class ParsedSheet:
+    skip_first_row: bool = False
+    indices: dict[str, int]
+    name: str
+
+    def __init__(self, name: str, xlsform_filename: PathOrStr) -> None:
+        self.name = name
+        self.indices = defaultdict(lambda: -1)
+
+        if self.name not in XLSFORM_COLS_BY_SHEET_NAME:
+            raise ValueError(f"Unexpected sheet name {self.name}!")
+
+        self.layer = QgsVectorLayer(
+            str(xlsform_filename)
+            + f"|layername={self.name}|option:FIELD_TYPES=STRING|option:HEADERS=FORCE",
+            self.name,
+            "ogr",
+        )
+
+        if not self.layer.isValid():
+            raise ValueError(f"Failed to load layer from: {xlsform_filename}")
+
+        fields_names = self.layer.fields().names()
+
+        # if the first line in the xlsform is empty
+        if fields_names[0] == "Field1":
+            self.skip_first_row = True
+
+            # expect at least one more line in the xlsform and use it as headers
+            if self.layer.featureCount() > 1:
+                fields_names = self.layer.getFeature(1).attributes()
+            else:
+                raise ValueError("Could not determine xlsform column headers!")
+
+        if not len(fields_names) >= 2:
+            raise ValueError("Sheet must have at least 2 columns: 'type', 'name'")
+
+        for index, field_name in enumerate(fields_names):
+            self.indices[field_name.lower()] = index
+
+    def __iter__(self) -> Iterator[dict[str, Any]]:
+        it = cast(Iterable, self.layer.getFeatures())
+        for idx, feat in enumerate(it):
+            if idx == 0 and self.skip_first_row:
+                continue
+
+            row: dict[str, Any] = {
+                # we add a magical `idx` field to help identify the row in error messages and create unique identifiers
+                "idx": idx,
+            }
+
+            for col in XLSFORM_COLS_BY_SHEET_NAME[self.name]:
+                if self.indices[col] == -1:
+                    row[col] = None
+                else:
+                    value = feat.attribute(self.indices[col])
+
+                    if isinstance(value, QVariant):
+                        if value.isNull():
+                            value = None
+                        else:
+                            value = value.value()
+
+                    row[col] = value
+
+            yield row
+
+
+def extract(
+    xlsform_filename: PathOrStr,
+) -> tuple[ParsedSheet, ParsedSheet, ParsedSheet]:
+    xlsform_filename = Path(xlsform_filename)
+    if not xlsform_filename.exists():
+        raise FileNotFoundError(f"XLSForm file not found: {xlsform_filename}")
+
+    xlsform_filename = Path(xlsform_filename)
+    if not xlsform_filename.exists():
+        raise FileNotFoundError(f"XLSForm file not found: {xlsform_filename}")
+
+    try:
+        survey_sheet = ParsedSheet("survey", xlsform_filename)
+        choices_sheet = ParsedSheet("choices", xlsform_filename)
+        settings_sheet = ParsedSheet("settings", xlsform_filename)
+    except ValueError as err:
+        raise ValueError(
+            f'Expected the provided spreadsheet to contain sheets named "survey", "choices" and "settings", but got an error: {err}'
+        )
+
+    return (survey_sheet, choices_sheet, settings_sheet)
 
 
 class XLSFormConverter(QObject):
-    xlsx_form_file = ""
+    survey_sheet: ParsedSheet
+    choices_sheet: ParsedSheet
+    settings_sheet: ParsedSheet
+    _field_compatibilities: dict[str, bool]
 
-    survey_layer: QgsVectorLayer | None = None
-    choices_layer: QgsVectorLayer | None = None
-    settings_layer: QgsVectorLayer | None = None
+    layers: list[LayerDef]
+    relations: list[RelationDef]
+    parent_ids: list[str]
+    layer_ids: list[str]
 
-    output_field = None
-    output_extent = None
-    output_project: QgsProject
-
-    custom_title = None
-    preferred_language = None
-    basemap = None
-    crs: QgsCoordinateReferenceSystem
-    extent = QgsRectangle()
-    geometries = None
-    groups_as_tabs = False
-
-    label_field_name = "label"
-
-    survey_skip_first = False
-    survey_type_index = -1
-    survey_name_index = -1
-    survey_label_index = -1
-    survey_calculation_index = -1
-    survey_relevant_index = -1
-    survey_choice_filter_index = -1
-    survey_parameters_index = -1
-    survey_constraint_index = -1
-    survey_constraint_message_index = -1
-    survey_required_index = -1
-    survey_default_index = -1
-    survey_read_only_index = -1
-    survey_trigger_index = -1
-
-    choices_skip_first = False
-    choices_list_name_index = -1
-    choices_name_index = -1
-    choices_label_index = -1
-
-    settings_skip_first = False
-    settings_form_title_index = -1
-    settings_form_id_index = -1
-    settings_default_language_index = -1
-
-    calculate_expressions: dict[str, str] = {}
-
-    multimedia_info_pushed = False
-    barcode_info_pushed = False
+    form_group_type: Literal["group_box", "tab"] = "group_box"
 
     info = pyqtSignal(str)
     warning = pyqtSignal(str)
     error = pyqtSignal(str)
 
-    FIELD_TYPES = [
-        "integer",
-        "decimal",
-        "range",
-        "date",
-        "time",
-        "datetime",
-        "text",
-        "barcode",
-        "image",
-        "audio",
-        "background-audio",
-        "video",
-        "file",
-        "select_one",
-        "select_one_from_file",
-        "select_multiple",
-        "select_multiple_from_file",
-        "acknowledge",
-        "rank",
-        "calculate",
-        "hidden",
-    ]
-    METADATA_TYPES = [
-        "start",
-        "end",
-        "today",
-        "deviceid",
-        "phonenumber",
-        "username",
-        "email",
-        "audit",
-    ]
+    def __init__(
+        self,
+        survey_sheet: ParsedSheet,
+        choices_sheet: ParsedSheet,
+        settings_sheet: ParsedSheet,
+        parent=None,
+    ) -> None:
+        super().__init__(parent)
 
-    BASEMAPS = {
-        "OpenStreetMap": "type=xyz&tilePixelRatio=1&url=https://tile.openstreetmap.org/%7Bz%7D/%7Bx%7D/%7By%7D.png&zmax=19&zmin=0&crs=EPSG3857",
-        "HOT": "type=xyz&tilePixelRatio=1&url=https://a.tile.openstreetmap.fr/hot/%7Bz%7D/%7Bx%7D/%7By%7D.png&zmax=19&zmin=0&crs=EPSG3857",
-    }
+        self.survey_sheet = survey_sheet
+        self.choices_sheet = choices_sheet
+        self.settings_sheet = settings_sheet
 
-    def __init__(self, xlsx_form_file):
-        QObject.__init__(self)
-        self.crs = QgsCoordinateReferenceSystem("EPSG:3857")
+        self.layers = []
+        self.relations = []
+        self.layer_ids = []
+        self.parent_ids = []
 
-        if not os.path.isfile(xlsx_form_file):
-            return
+        self._field_compatibilities = {}
 
-        self.xlsx_form_file = xlsx_form_file
-
-        self.survey_layer = QgsVectorLayer(
-            xlsx_form_file
-            + "|layername=survey|option:FIELD_TYPES=STRING|option:HEADERS=FORCE",
-            "survey",
-            "ogr",
-        )
-        if self.survey_layer.isValid():
-            fields = self.survey_layer.fields().names()
-            if fields[0] == "Field1":
-                self.survey_skip_first = True
-                fields = self.survey_layer.getFeature(1).attributes()
-
-            self.survey_type_index = fields.index("type") if "type" in fields else -1
-            self.survey_name_index = fields.index("name") if "name" in fields else -1
-            self.survey_label_index = fields.index("label") if "label" in fields else -1
-            self.survey_calculation_index = (
-                fields.index("calculation") if "calculation" in fields else -1
-            )
-            self.survey_relevant_index = (
-                fields.index("relevant") if "relevant" in fields else -1
-            )
-            self.survey_choice_filter_index = (
-                fields.index("choice_filter") if "choice_filter" in fields else -1
-            )
-            self.survey_parameters_index = (
-                fields.index("parameters") if "parameters" in fields else -1
-            )
-            self.survey_constraint_index = (
-                fields.index("constraint") if "constraint" in fields else -1
-            )
-            self.survey_constraint_message_index = (
-                fields.index("constraint_message")
-                if "constraint_message" in fields
-                else -1
-            )
-            self.survey_required_index = (
-                fields.index("required") if "required" in fields else -1
-            )
-            self.survey_default_index = (
-                fields.index("default") if "default" in fields else -1
-            )
-            self.survey_read_only_index = (
-                fields.index("read_only") if "read_only" in fields else -1
-            )
-            self.survey_trigger_index = (
-                fields.index("trigger") if "trigger" in fields else -1
-            )
-
-        self.choices_layer = QgsVectorLayer(
-            xlsx_form_file
-            + "|layername=choices|option:FIELD_TYPES=STRING|option:HEADERS=FORCE",
-            "options",
-            "ogr",
-        )
-        if self.choices_layer.isValid():
-            fields = self.choices_layer.fields().names()
-            if fields[0] == "Field1":
-                self.choices_skip_first = True
-                fields = self.choices_layer.getFeature(1).attributes()
-
-            self.choices_list_name_index = (
-                fields.index("list_name") if "list_name" in fields else -1
-            )
-            if self.choices_list_name_index == -1:
-                self.choices_list_name_index = (
-                    fields.index("list name") if "list name" in fields else -1
-                )
-            self.choices_name_index = fields.index("name") if "name" in fields else -1
-            self.choices_name_index = fields.index("label") if "label" in fields else -1
-
-        self.settings_layer = QgsVectorLayer(
-            xlsx_form_file
-            + "|layername=settings|option:FIELD_TYPES=STRING|option:HEADERS=FORCE",
-            "settings",
-            "ogr",
-        )
-        if self.settings_layer.isValid():
-            fields = self.settings_layer.fields().names()
-            if fields[0] == "Field1":
-                self.settings_skip_first = True
-                fields = self.settings_layer.getFeature(1).attributes()
-
-            self.settings_form_title_index = (
-                fields.index("form_title") if "form_title" in fields else -1
-            )
-            self.settings_form_id_index = (
-                fields.index("form_id") if "form_id" in fields else -1
-            )
-            self.settings_default_language_index = (
-                fields.index("default_language") if "default_language" in fields else -1
-            )
-
-    def is_valid(self):
-        # Missing the one layer that must be available
-        if (
-            not hasattr(self, "survey_layer")
-            or self.survey_layer is None
-            or not self.survey_layer.isValid()
-        ):
+    def is_valid(self) -> bool:
+        if not self.survey_sheet.layer.isValid():
             return False
 
         # Missing the two basic parameters that must be present within the survey layer
-        if self.survey_type_index == -1 or self.survey_name_index == -1:
+        if self.survey_sheet.indices["type"] == -1:
+            return False
+
+        if self.survey_sheet.indices["name"] == -1:
             return False
 
         return True
 
-    def create_field(self, feature):
-        if not feature.attribute(self.survey_type_index) or not feature.attribute(
-            self.survey_name_index
-        ):
-            return None
+    def find_layer(self, layer_id: str) -> LayerDef | None:
+        for layer_def in self.layers:
+            if layer_def["layer_id"] == layer_id:
+                return layer_def
 
-        type_details = str(feature.attribute(self.survey_type_index)).split(" ")
-        type_details[0] = type_details[0].lower()
+        return None
 
-        field_name = str(feature.attribute(self.survey_name_index)).strip()
-        field_alias = (
-            str(feature.attribute(self.survey_label_index)).strip()
-            if feature.attribute(self.survey_label_index)
-            else field_name
+    def _get_field_def_alias(self, sheet_row: dict[str, Any]) -> AliasDef:
+        if not sheet_row["label"]:
+            return {}
+
+        # check if the `label` is a dynamic expression, or it is a static string value
+        alias_expression = XlsFormExpression(strip_tags(sheet_row["label"]).strip())
+        if alias_expression.is_dynamic():
+            return {
+                "alias_expression": alias_expression.to_qgis_label_expression(),
+            }
+
+        else:
+            return {
+                "alias": alias_expression.to_string(),
+            }
+
+    def _get_field_def(self, sheet_row: dict[str, Any]) -> WeakFieldDef:
+        field_def: WeakFieldDef = {}
+        indices = self.survey_sheet.indices
+        xlsform_type = get_xlsform_type(sheet_row["type"])
+        field_name = str(sheet_row["name"]).strip()
+        field_type = XLS_TYPES_MAP.get(xlsform_type, None)
+
+        if not field_type:
+            logger.debug(f"Couldn't determine the type for `{field_name}`!")
+
+            return {}
+
+        self._check_xlsform_type_compatibility(xlsform_type)
+
+        constraint_expression = None
+        constraint_expression_description = None
+        constraint_expression_strength: ConstraintStrength = "not_set"
+
+        if sheet_row["constraint"]:
+            constraint_str = str(sheet_row["constraint"]).strip()
+            constraint_expression = xlsform_to_qgis_expression(
+                constraint_str, sheet_row["name"]
+            )
+
+            if constraint_expression:
+                constraint_expression_strength = "hard"
+
+            if sheet_row["constraint_message"]:
+                constraint_expression_description = str(
+                    sheet_row["constraint_message"]
+                ).strip()
+
+        is_not_null = False
+        is_not_null_strength: ConstraintStrength = "not_set"
+
+        if indices["required"] != -1:
+            required_str = str(sheet_row["required"]).strip().lower()
+
+            if required_str == "yes":
+                is_not_null = True
+                is_not_null_strength = "hard"
+
+        field_def.update(cast(WeakFieldDef, self._get_field_def_alias(sheet_row)))
+
+        # you cannot define both `calculation` and `default` at the same time, in such case use only `calculation`
+        if sheet_row["calculation"] and sheet_row["default"]:
+            self.warning.emit(
+                "Both `calculation` and `default` are set; only calculation will be used"
+            )
+
+        # handle default value from either `calculation` or `default` column
+        if sheet_row["calculation"]:
+            field_def.update(
+                {
+                    "default_value": xlsform_to_qgis_expression(
+                        sheet_row["calculation"]
+                    ),
+                    "set_default_value_on_update": False,
+                }
+            )
+        elif sheet_row["default"]:
+            if "${last-saved" not in sheet_row["default"]:
+                is_digit = sheet_row["default"].replace(".", "", 1).isdigit()
+
+                if is_digit:
+                    default_value_expression = sheet_row["default"]
+                else:
+                    # TODO @suricactus: handle escaping of quotes inside the string
+                    default_value_expression = f"'{sheet_row['default']}'"
+
+                field_def.update(
+                    {
+                        "default_value": default_value_expression,
+                        "set_default_value_on_update": False,
+                    }
+                )
+            else:
+                # TODO @suricactus: handle last-saved functionality, skipping for now
+                pass
+
+        return cast(
+            WeakFieldDef,
+            {
+                **field_def,
+                "name": field_name,
+                "type": field_type,
+                "is_not_null": is_not_null,
+                "is_not_null_strength": is_not_null_strength,
+                "constraint_expression": constraint_expression,
+                "constraint_expression_description": constraint_expression_description,
+                "constraint_expression_strength": constraint_expression_strength,
+            },
         )
-        field_alias = strip_tags(field_alias)
 
-        field_type = None
-        field = None
+    def _check_xlsform_type_compatibility(self, xlsform_type: str) -> None:
+        if xlsform_type in ("barcode",):
+            if not self._field_compatibilities.get("barcode"):
+                self._field_compatibilities["barcode"] = True
 
-        if type_details[0] == "integer":
-            field_type = QMetaType.Type.LongLong
-        elif type_details[0] == "decimal":
-            field_type = QMetaType.Type.Double
-        elif type_details[0] == "range":
-            field_type = QMetaType.Type.Double
-        elif type_details[0] == "date" or type_details[0] == "today":
-            field_type = QMetaType.Type.QDate
-        elif type_details[0] == "time":
-            field_type = QMetaType.Type.QTime
-        elif (
-            type_details[0] == "datetime"
-            or type_details[0] == "start"
-            or type_details[0] == "end"
-        ):
-            field_type = QMetaType.Type.QDateTime
-        elif type_details[0] == "acknowledge":
-            field_type = QMetaType.Type.Bool
-        elif (
-            type_details[0] == "text"
-            or type_details[0] == "barcode"
-            or type_details[0] == "image"
-            or type_details[0] == "audio"
-            or type_details[0] == "background-audio"
-            or type_details[0] == "video"
-            or type_details[0] == "file"
-            or type_details[0] == "select_one"
-            or type_details[0] == "select_one_from_file"
-            or type_details[0] == "select_multiple"
-            or type_details[0] == "select_multiple_from_file"
-            or type_details[0] == "username"
-            or type_details[0] == "email"
-        ):
-            field_type = QMetaType.Type.QString
-
-            if type_details[0] == "barcode":
-                if not self.barcode_info_pushed:
-                    self.info.emit(
-                        self.tr(
-                            "Barcode functionality is only available through QField; it will be a simple text field in QGIS"
-                        )
-                    )
-                    self.barcode_info_pushed = True
-            elif (
-                type_details[0] == "image"
-                or type_details[0] == "audio"
-                or type_details[0] == "video"
-                or type_details[0] == "background-audio"
-            ):
-                if type_details[0] == "background-audio":
-                    self.warning.emit(
-                        self.tr(
-                            "Unsupported type background-audio, using audio instead"
-                        )
-                    )
-
-                if not self.multimedia_info_pushed:
-                    self.info.emit(
-                        self.tr(
-                            "Multimedia content can be captured using QField on devices with cameras and microphones; in QGIS, pre-existing files can be selected."
-                        )
-                    )
-                    self.multimedia_info_pushed = True
-            elif type_details[0] == "username" or type_details[0] == "email":
                 self.info.emit(
                     self.tr(
-                        "The metadata {} is only available through QFieldCloud; it will return an empty value in QGIS".format(
-                            type_details[0]
-                        )
+                        "Barcode functionality is only available through QField; it will be a simple text field in QGIS"
                     )
                 )
-        elif type_details[0] == "calculate" or type_details[0] == "hidden":
-            field_type = QMetaType.Type.QString
-
-            if self.survey_calculation_index >= 0:
-                field_calculation = (
-                    str(feature.attribute(self.survey_calculation_index)).strip()
-                    if feature.attribute(self.survey_calculation_index)
-                    else ""
-                )
-                if field_calculation != "":
-                    self.calculate_expressions[field_name] = field_calculation
-
-        if field_type:
-            field = QgsField(field_name, field_type)
-            field.setAlias(field_alias)
-
-            field_constraints = QgsFieldConstraints()
-
-            if self.survey_constraint_index >= 0:
-                field_constraint_expression = (
-                    str(feature.attribute(self.survey_constraint_index)).strip()
-                    if feature.attribute(self.survey_constraint_index)
-                    else ""
-                )
-                if field_constraint_expression != "":
-                    field_constraint_expression = self.convert_expression(
-                        field_constraint_expression, dot_field_name=field_name
-                    )
-
-                    field_constraint_message = (
-                        str(
-                            feature.attribute(self.survey_constraint_message_index)
-                        ).strip()
-                        if self.survey_constraint_message_index >= 0
-                        and feature.attribute(self.survey_constraint_message_index)
-                        else ""
-                    )
-
-                    # setup constraints
-                    field_constraints.setConstraintExpression(
-                        field_constraint_expression, field_constraint_message
-                    )
-                    field_constraints.setConstraintStrength(
-                        QgsFieldConstraints.Constraint.ConstraintExpression,
-                        QgsFieldConstraints.ConstraintStrength.ConstraintStrengthHard,
-                    )
-
-            if self.survey_required_index >= 0:
-                field_required = (
-                    str(feature.attribute(self.survey_required_index)).strip().lower()
-                    if feature.attribute(self.survey_required_index)
-                    else ""
+        elif xlsform_type in (
+            "image",
+            "audio",
+            "video",
+            "background-audio",
+            "background-audio",
+        ):
+            if xlsform_type == "background-audio":
+                self.warning.emit(
+                    self.tr("Unsupported type background-audio, using audio instead")
                 )
 
-                if field_required == "yes":
-                    field_constraints.setConstraint(
-                        QgsFieldConstraints.Constraint.ConstraintNotNull,
-                        QgsFieldConstraints.ConstraintOrigin.ConstraintOriginLayer,
+            if not self._field_compatibilities.get("media"):
+                self._field_compatibilities["media"] = True
+                self.info.emit(
+                    self.tr(
+                        "Multimedia content can be captured using QField on devices with cameras and microphones; in QGIS, pre-existing files can be selected."
                     )
-                    field_constraints.setConstraintStrength(
-                        QgsFieldConstraints.Constraint.ConstraintNotNull,
-                        QgsFieldConstraints.ConstraintStrength.ConstraintStrengthHard,
+                )
+
+        elif xlsform_type in ("username", "email"):
+            if not self._field_compatibilities.get("metadata"):
+                self._field_compatibilities["metadata"] = True
+
+                self.info.emit(
+                    self.tr(
+                        'The metadata "username" and "email" is only available through QFieldCloud; it will return an empty value in QGIS'.format()
                     )
-
-            field.setConstraints(field_constraints)
-
-        return field
-
-    def create_layer(self, name=None):
-        if name:
-            self.info.emit(self.tr("Creating child survey layer {}".format(name)))
+                )
         else:
-            self.info.emit(self.tr("Creating main survey layer"))
+            # no compatibility warnings, horray!
+            pass
 
-        layer_geometry = self.detect_geometry(name)
-        layer_fields = self.detect_fields(name)
+    # def convert(self, output_dir: PathOrStr) -> None:
+    def convert(self) -> None:
+        assert self.survey_sheet
+        assert self.settings_sheet
+        assert self.choices_sheet
 
-        writer_options = QgsVectorFileWriter.SaveVectorOptions()
-        writer_options.actionOnExistingFile = (
-            QgsVectorFileWriter.ActionOnExistingFile.CreateOrOverwriteLayer
-            if os.path.isfile(self.output_file)
-            else QgsVectorFileWriter.ActionOnExistingFile.CreateOrOverwriteFile
-        )
-        writer_options.layerName = "survey" if not name else name
-        writer_options.fileEncoding = "utf-8"
+        _project = {
+            "custom_properties": {
+                ("qfieldsync", "maximumImageWidthHeight"): 0,
+                ("qfieldsync", "initialMapMode"): "digitize",
+            },
+            # TODO only if the EPSG is 3857 or any different from 4326
+            "display_settings": {
+                "coordinate_type": "custom_crs",
+                "custom_crs": "EPSG:4326",
+            },
+        }
 
-        project = QgsProject.instance()
+        self.layers.extend(self._get_choices_layers())
 
-        assert project
-
-        QgsVectorFileWriter.create(
-            self.output_file,
-            layer_fields,
-            layer_geometry,
-            QgsCoordinateReferenceSystem("EPSG:4326")
-            if self.crs.authid() == "EPSG:3857"
-            else self.crs,
-            project.transformContext(),
-            writer_options,
-        )
-
-        layer = QgsVectorLayer(
-            self.output_file + "|layername=" + writer_options.layerName,
-            writer_options.layerName,
-            "ogr",
-        )
-        if name:
-            layer.setFlags(QgsMapLayer.LayerFlag.Private)
-        layer.setDefaultValueDefinition(
-            layer.fields().indexOf("uuid"), QgsDefaultValue("uuid()", False)
+        layer_id = "survey_layer"
+        self.layers.append(
+            generate_layer_def(
+                layer_id=layer_id,
+                name="Survey Layer",
+                fields=[
+                    generate_field_def(
+                        name="uuid",
+                        type="string",
+                        alias="UUID",
+                    ),
+                ],
+            )
         )
 
-        for layer_field in layer_fields:
-            field_index = layer.fields().indexOf(layer_field.name())
-            if field_index >= 0:
-                layer.setConstraintExpression(
-                    field_index,
-                    layer_field.constraints().constraintExpression(),
-                    layer_field.constraints().constraintDescription(),
-                )
-                if (
-                    layer_field.constraints().constraintStrength(
-                        QgsFieldConstraints.Constraint.ConstraintNotNull
+        self.layer_ids.append(layer_id)
+
+        return self.build_survey_form()
+
+    def build_survey_form(self) -> None:
+        # use the top most "layer_id" from the stack to find the respective layer definition
+        max_pixels: int | None = None
+
+        for row in self.survey_sheet:
+            try:
+                # If there are not `parent_ids`, it means we are at the root level
+                # the form item's `parent_id` set to `None` represents that.
+                layer_id = self.layer_ids[-1]
+                layer_def = self.find_layer(layer_id)
+
+                assert layer_def is not None
+
+                row_field_defs, row_form_item_defs = self._parse_form_row(row)
+
+                layer_def["fields"].extend(row_field_defs)
+                layer_def["form_config"].extend(row_form_item_defs)
+
+                # TODO find a better place for `max_pixels` logic
+                if row["type"] == "image":
+                    max_pixels = self._get_field_settings_max_pixels(row, max_pixels)
+
+            except Exception as err:
+                logger.error(
+                    self.tr(
+                        f"Failed to parse row with type `{row['type']}` and name `{row['name']}` at row index {row['idx']}: {err}"
                     )
-                    == QgsFieldConstraints.ConstraintStrength.ConstraintStrengthHard
-                ):
-                    layer.setFieldConstraint(
-                        field_index,
-                        QgsFieldConstraints.Constraint.ConstraintNotNull,
-                        QgsFieldConstraints.ConstraintStrength.ConstraintStrengthHard,
+                )
+
+                self.error.emit(
+                    self.tr(
+                        f"Failed to parse row with type `{row['type']}` and name `{row['name']}` at row index {row['idx']}: {err}"
                     )
-
-        layer.setCustomProperty("QFieldSync/cloud_action", "offline")
-        layer.setCustomProperty("QFieldSync/action", "offline")
-
-        self.output_project.addMapLayer(layer)
-
-        return layer
-
-    def create_editor_widget(self, feature):
-        type_details = str(feature.attribute(self.survey_type_index)).split(" ")
-        type_details[0] = type_details[0].lower()
-
-        editor_widget = None
-
-        if type_details[0] == "integer" or type_details[0] == "decimal":
-            editor_widget = QgsEditorWidgetSetup("Range", {})
-            editor_widget = QgsEditorWidgetSetup("Range", {})
-        elif type_details[0] == "range":
-            if self.survey_parameters_index >= 0:
-                parameters = str(feature.attribute(self.survey_parameters_index))
-
-                start_value = re.search(
-                    r"start=\s*([0-9]+)", parameters, flags=re.IGNORECASE
                 )
-                start_value = start_value.group(1) if start_value else 0
-                end_value = re.search(
-                    r"end=\s*([0-9]+)", parameters, flags=re.IGNORECASE
-                )
-                end_value = end_value.group(1) if end_value else 10
-                step_value = re.search(
-                    r"step=\s*([0-9]+)", parameters, flags=re.IGNORECASE
-                )
-                step_value = step_value.group(1) if step_value else 1
 
-                editor_widget = QgsEditorWidgetSetup(
-                    "Range",
-                    {
-                        "Min": start_value,
-                        "Max": end_value,
-                        "Step": step_value,
-                        "Style": "Slider",
+                raise
+                continue
+
+    def _parse_form_row(
+        self, row: dict[str, Any]
+    ) -> tuple[list[FieldDef], list[FormItemDef]]:
+        fields = []
+        form_items = []
+
+        # unsupported xlsform column `trigger`
+        if row["trigger"]:
+            self.warning.emit("Triggers are not supported yet, skipping")
+
+        widget_type_cb = get_widget_type_callback(row)
+
+        if not widget_type_cb:
+            logger.info(self.tr(f"Unsupported xlsform type: {row['type']}, skipping!"))
+
+            self.warning.emit(
+                self.tr(f"Unsupported xlsform type: {row['type']}, skipping!")
+            )
+
+            print("NOOOOOOOOOOOO", widget_type_cb)
+
+            return [], []
+
+        # we start with some defaults that are common for all field and widget types
+        field_default: WeakFieldDef = self._get_field_def(row)
+        form_item_default: WeakFormItemDef = {}
+
+        parsed_row = widget_type_cb(self, row)
+
+        # If there are not `parent_ids`, it means we are at the root level
+        # the form item's `parent_id` set to `None` represents that.
+        if self.parent_ids:
+            parent_id = self.parent_ids[-1]
+        else:
+            parent_id = None
+
+        # Determine the parent id for the current form item.
+        # If `group_status` is `GroupStatus.END``, then the last parent id is popped from the stack and no new element is added.
+        if parsed_row.group_status == GroupStatus.BEGIN:
+            self.parent_ids.append(parsed_row.container["id"])
+            # alternatively, we could do call get_form recursively:
+            # self.get_form(parsed_row.container["id"])
+        elif parsed_row.group_status == GroupStatus.END:
+            self.parent_ids.pop()
+
+        # Determine the layer id for the current form item.
+        # If `layer_status` is `layerStatus.END``, then the last layer id is popped from the stack and no new element is added.
+        if parsed_row.layer_status == LayerStatus.BEGIN:
+            # we need to define a new variable with the newly added layer id to help mypy understand that it is not `None`
+            new_layer_id: str | None = parsed_row.layer.get("layer_id")
+
+            assert new_layer_id
+
+            self.layer_ids.append(new_layer_id)
+        elif parsed_row.layer_status == LayerStatus.END:
+            self.layer_ids.pop()
+
+        # if there is a layer definition in the parsed row, create it and add it to the layers list
+        if parsed_row.layer:
+            assert parsed_row.layer_status == LayerStatus.BEGIN
+            assert parsed_row.group_status == GroupStatus.BEGIN
+            assert parsed_row.container
+
+            self.layers.append(
+                generate_layer_def(
+                    **parsed_row.layer,
+                )
+            )
+
+        if parsed_row.field:
+            fields.append(
+                generate_field_def(
+                    **{**field_default, **parsed_row.field},
+                )
+            )
+            form_items.append(
+                generate_form_item_def(
+                    **{**form_item_default, **parsed_row.form_item},
+                    parent_id=parent_id,
+                    type="field",
+                )
+            )
+
+        elif parsed_row.container:
+            form_items.append(
+                generate_form_item_def(
+                    **{
+                        **form_item_default,
+                        **parsed_row.container,
+                        "parent_id": parent_id,
+                        "type": "group_box",
                     },
                 )
-            else:
-                editor_widget = QgsEditorWidgetSetup("Range", {})
-        elif (
-            type_details[0] == "date"
-            or type_details[0] == "time"
-            or type_details[0] == "datetime"
-        ):
-            field_format = "yyyy-MM-dd"
-            if type_details[0] == "time":
-                field_format = "HH:mm:ss"
-            elif type_details[0] == "datetime":
-                field_format = "yyyy-MM-dd HH:mm:ss"
-            editor_widget = QgsEditorWidgetSetup(
-                "DateTime",
+            )
+
+        if parsed_row.relation:
+            pass
+            # self.relations.append(
+            #     generate_relation_def(
+            #         **parsed_row.relation,
+            #     )
+            # )
+
+        return fields, form_items
+
+    def _get_choices_values(self) -> dict[str, list[ChoicesDef]]:
+        assert self.choices_sheet
+
+        choices: dict[str, list[ChoicesDef]] = defaultdict(
+            lambda: [{"name": "", "label": ""}]
+        )
+
+        for idx, row in enumerate(self.choices_sheet, 1):
+            last_list_name = None
+
+            if not row["list_name"]:
+                logger.debug(
+                    self.tr(
+                        f"Skipping row with empty `list_name` in choices at row {idx}!"
+                    )
+                )
+
+                last_list_name = None
+
+                continue
+
+            # the choices from a single list must be consecutive values
+            if last_list_name is not None and last_list_name != row["list_name"]:
+                assert last_list_name not in choices
+
+            choices[row["list_name"]].append(
                 {
-                    "field_format_overwrite": True,
-                    "display_format": field_format,
-                    "field_format": field_format,
-                    "allow_null": True,
-                    "calendar_popup": True,
-                },
+                    "name": row["name"],
+                    "label": row["label"],
+                }
             )
-        elif (
-            type_details[0] == "image"
-            or type_details[0] == "audio"
-            or type_details[0] == "background-audio"
-            or type_details[0] == "video"
-            or type_details[0] == "file"
-        ):
-            document_viewer = 0
-            if type_details[0] == "image":
-                document_viewer = 1
-            elif type_details[0] == "audio" or type_details[0] == "background-audio":
-                document_viewer = 3
-            elif type_details[0] == "video":
-                document_viewer = 4
-            editor_widget = QgsEditorWidgetSetup(
-                "ExternalResource",
-                {
-                    "DocumentViewer": document_viewer,
-                    "FileWidget": True,
-                    "FileWidgetButton": True,
-                    "RelativeStorage": 1,
-                },
+
+        return dict(choices)
+
+    def _get_choices_layers(self) -> list[LayerDef]:
+        choices_layers: list[LayerDef] = []
+
+        fields_def = [
+            generate_field_def(
+                name="name",
+                type="string",
+            ),
+            generate_field_def(
+                name="label",
+                type="string",
+            ),
+        ]
+
+        choice_values_by_list_name = self._get_choices_values()
+
+        for list_name, list_choices in choice_values_by_list_name.items():
+            layer_id = build_choices_layer_id(list_name)
+
+            choices_layers.append(
+                generate_layer_def(
+                    layer_id=layer_id,
+                    name=layer_id,
+                    crs="EPSG:4326",
+                    fields=fields_def,
+                    is_private=True,
+                    custom_properties={
+                        "QFieldSync/cloud_action": "no_action",
+                        "QFieldSync/action": "copy",
+                    },
+                    data=list_choices,
+                )
             )
-        elif type_details[0] == "acknowledge":
-            editor_widget = QgsEditorWidgetSetup("CheckBox", {})
-        elif (
-            type_details[0] == "text"
-            or type_details[0] == "barcode"
-            or type_details[0] == "calculate"
-        ):
-            editor_widget = QgsEditorWidgetSetup("TextEdit", {})
-        elif (
-            type_details[0] == "select_one"
-            or type_details[0] == "select_multiple"
-            or type_details[0] == "select_one_from_file"
-            or type_details[0] == "select_multiple_from_file"
-        ):
-            list_key = "name"
-            list_value = self.label_field_name
-            if (
-                type_details[0] == "select_one_from_file"
-                or type_details[0] == "select_multiple_from_file"
-            ):
-                list_name = ""
 
-                if len(type_details) >= 2:
-                    list_name = "list_" + " ".join(type_details[1:])
-                    if self.survey_parameters_index >= 0:
-                        parameters = str(
-                            feature.attribute(self.survey_parameters_index)
-                        )
-                        match = re.search(r"(?:value)\s*=\s*([^\s]*)", parameters)
-                        if match:
-                            list_key = match.group(1)
-                        match = re.search(r"(?:label)\s*=\s*([^\s]*)", parameters)
-                        if match:
-                            list_value = match.group(1)
-            else:
-                list_name = "list_" + type_details[1]
+        return choices_layers
 
-            if list_name:
-                value_layer = self.output_project.mapLayersByName(list_name)
-                if value_layer:
-                    allow_multi = (
-                        type_details[0] == "select_multiple"
-                        or type_details[0] == "select_multiple_from_file"
-                    )
-                    filter_expression = (
-                        str(feature.attribute(self.survey_choice_filter_index)).strip()
-                        if self.survey_choice_filter_index >= 0
-                        and feature.attribute(self.survey_choice_filter_index)
-                        else ""
-                    )
-                    if filter_expression != "":
-                        filter_expression = self.convert_expression(
-                            filter_expression, use_current_value=True
-                        )
-                    if (
-                        type_details[0] == "select_multiple"
-                        or type_details[0] == "select_multiple_from_file"
-                    ):
-                        if filter_expression != "":
-                            filter_expression = (
-                                '"'
-                                + list_key
-                                + "\" != '' and ("
-                                + filter_expression
-                                + ")"
-                            )
-                        else:
-                            filter_expression = '"' + list_key + "\" != ''"
-                    editor_widget = QgsEditorWidgetSetup(
-                        "ValueRelation",
-                        {
-                            "Layer": value_layer[0].id(),
-                            "LayerName": type_details[1],
-                            "LayerProviderName": "ogr",
-                            "LayerSource": value_layer[0].source(),
-                            "Key": list_key,
-                            "Value": list_value,
-                            "AllowNull": False,
-                            "AllowMulti": allow_multi,
-                            "FilterExpression": filter_expression,
-                        },
-                    )
-                else:
-                    editor_widget = QgsEditorWidgetSetup("TextEdit", {})
-            else:
-                editor_widget = QgsEditorWidgetSetup("TextEdit", {})
-        elif (
-            type_details[0] == "today"
-            or type_details[0] == "start"
-            or type_details[0] == "end"
-            or type_details[0] == "username"
-            or type_details[0] == "email"
-            or type_details[0] == "hidden"
-        ):
-            # Metadata values are hidden
-            editor_widget = QgsEditorWidgetSetup("Hidden", {})
+    def get_project_extent(self, layer_geometry: Qgis.WkbType, crs: str):
+        if layer_geometry in (Qgis.WkbType.NoGeometry, Qgis.WkbType.Unknown):
+            return [-9.88, 33.41, 40.97, 61.11]
 
-        if editor_widget and self.survey_calculation_index >= 0:
-            calculation = (
-                str(feature.attribute(self.survey_calculation_index)).strip()
-                if feature.attribute(self.survey_calculation_index)
-                else ""
+        # TODO one may pass a source layer to prepopulate the geometries from, so we can compute the actual extent of those geometries
+        return [-9.88, 33.41, 40.97, 61.11]
+
+    def _get_field_settings_max_pixels(
+        self, row, previous_max_pixels: int | None
+    ) -> int | None:
+        # the current image field does not have parameters set, return the previous value
+        if not row["parameters"]:
+            return previous_max_pixels
+
+        image_max_pixels_matches = re.search(
+            r"max-pixels=\s*([0-9]+)", row["parameters"], flags=re.IGNORECASE
+        )
+
+        # the current image field does not have max-pixels parameter, return the previous value
+        if not image_max_pixels_matches:
+            return previous_max_pixels
+
+        image_max_pixels = int(image_max_pixels_matches.group(1))
+
+        # the current image field has the same max-pixels parameter as the previous one, return the value
+        if image_max_pixels == previous_max_pixels:
+            return previous_max_pixels
+
+        if previous_max_pixels is None:
+            return image_max_pixels
+        else:
+            self.warning.emit(
+                self.tr(
+                    "Due to the presence of a mix of image attributes having max-pixels parameter of varying values, the largest max-pixels value will be applied"
+                )
             )
-            field_alias = (
-                str(feature.attribute(self.survey_label_index)).strip()
-                if feature.attribute(self.survey_label_index)
-                else ""
-            )
-            if calculation != "" and field_alias == "":
-                editor_widget = QgsEditorWidgetSetup("Hidden", {})
+            return max(image_max_pixels, previous_max_pixels)
 
-        return editor_widget
 
-    def detect_geometry(self, child_name=None):
-        assert self.survey_layer is not None
+class XlsFormExpression:
+    xlsform_expression: str
 
-        geometry = Qgis.WkbType.NoGeometry
+    def __init__(self, xlsform_expression: str | None) -> None:
+        self.xlsform_expression = xlsform_expression or ""
 
-        current_child_name = []
-        it = self.survey_layer.getFeatures()
-        if self.survey_skip_first:
-            feature = QgsFeature()
-            it.nextFeature(feature)
-
-        for feature in it:  # type: ignore
-            feature_type = str(feature.attribute(self.survey_type_index)).strip()
-            if feature_type == "begin repeat":
-                current_child_name.append(feature.attribute(self.survey_name_index))
-            elif feature_type == "end repeat":
-                current_child_name.pop()
-            else:
-                if (
-                    len(current_child_name) > 0 and current_child_name[-1] == child_name
-                ) or (len(current_child_name) == 0 and not child_name):
-                    type_details = str(feature.attribute(self.survey_type_index)).split(
-                        " "
-                    )[0]
-                    if type_details == "geopoint" or type_details == "start-geopoint":
-                        geometry = Qgis.WkbType.MultiPoint
-                        break
-                    if type_details == "geotrace" or type_details == "start-geotrace":
-                        geometry = Qgis.WkbType.MultiLineString
-                        break
-                    if type_details == "geoshape" or type_details == "start-geoshape":
-                        geometry = Qgis.WkbType.MultiPolygon
-                        break
-
-        return geometry
-
-    def detect_fields(self, child_name=None):
-        assert self.survey_layer is not None
-
-        fields = QgsFields()
-
-        fields.append(QgsField("uuid", QMetaType.Type.QString))
-        if child_name:
-            fields.append(QgsField("uuid_parent", QMetaType.Type.QString))
-
-        current_child_name = []
-        it = self.survey_layer.getFeatures()
-        if self.survey_skip_first:
-            feature = QgsFeature()
-            it.nextFeature(feature)
-
-        for feature in it:  # type: ignore
-            feature_type = str(feature.attribute(self.survey_type_index)).strip()
-            feature_name = str(feature.attribute(self.survey_name_index)).strip()
-            if feature_type == "begin repeat" or feature_type == "begin_repeat":
-                current_child_name.append(feature_name)
-            elif feature_type == "end repeat" or feature_type == "end_repeat":
-                current_child_name.pop()
-            else:
-                if (
-                    len(current_child_name) > 0 and current_child_name[-1] == child_name
-                ) or (len(current_child_name) == 0 and not child_name):
-                    field = self.create_field(feature)
-                    if field:
-                        fields.append(field)
-                    else:
-                        type_details = str(
-                            feature.attribute(self.survey_type_index)
-                        ).split(" ")
-                        type_details[0] = type_details[0].lower()
-                        if type_details[0] in self.FIELD_TYPES:
-                            self.warning.emit(
-                                self.tr(
-                                    "Unsupported field type {} for layer {}, skipping".format(
-                                        type_details[0],
-                                        "survey" if not child_name else child_name,
-                                    )
-                                )
-                            )
-                        elif type_details[0] in self.METADATA_TYPES:
-                            if (
-                                not type_details[0] == "end"
-                                or feature.attribute(self.survey_type_index)
-                                .strip()
-                                .lower()
-                                == "end"
-                            ):
-                                self.warning.emit(
-                                    self.tr(
-                                        "Unsupported metadata {} for layer {}, skipping".format(
-                                            type_details[0],
-                                            "survey" if not child_name else child_name,
-                                        )
-                                    )
-                                )
-
-        return fields
-
-    def convert_label_expression(self, original_label_expression):
-        label_expression = original_label_expression
+    def to_qgis_label_expression(self) -> str:
+        label_expression = self.xlsform_expression
 
         # ${field} to "field"
         label_expression = label_expression.replace("'", "\\'")
@@ -815,1021 +797,622 @@ class XLSFormConverter(QObject):
 
         label_expression_try = QgsExpression(label_expression)
         if label_expression_try.hasParserError():
-            self.warning.emit(
-                self.tr(
-                    "Unsupported label expression {}".format(original_label_expression)
+            raise Exception(
+                QObject().tr(
+                    "Unsupported label expression {}".format(self.xlsform_expression)
                 )
             )
 
         return label_expression
 
-    def convert_choices(
-        self, list_name, features, output_lists_field_names, output_lists_fields
-    ):
-        project = QgsProject.instance()
+    def to_quoted_string(self) -> str:
+        escaped_str = self.xlsform_expression.replace("'", "\\'")
+        return f"'{escaped_str}'"
 
-        assert project
+    def to_string(self) -> str:
+        return self.xlsform_expression
 
-        writer_options = QgsVectorFileWriter.SaveVectorOptions()
-        writer_options.actionOnExistingFile = (
-            QgsVectorFileWriter.ActionOnExistingFile.CreateOrOverwriteLayer
-            if os.path.isfile(self.output_file)
-            else QgsVectorFileWriter.ActionOnExistingFile.CreateOrOverwriteFile
-        )
-        writer_options.layerName = "list_" + list_name
-        writer_options.fileEncoding = "utf-8"
-        output_lists_sink = QgsVectorFileWriter.create(
-            self.output_file,
-            output_lists_fields,
-            Qgis.WkbType.NoGeometry,
-            QgsCoordinateReferenceSystem(4326),
-            project.transformContext(),
-            writer_options,
-        )
+    def is_dynamic(self) -> bool:
+        return bool(re.search(r"\$\{([^}]+)}", self.xlsform_expression))
 
-        assert output_lists_sink
 
-        # Add pseudo-NULL value
-        output_feature = QgsFeature(output_lists_fields)
-        output_feature.setAttribute("name", "")
-        output_feature.setAttribute(self.label_field_name, "")
-        output_lists_sink.addFeature(output_feature)
+def xlsform_to_qgis_expression(
+    xlsform_expression: str,
+    field_name: str | None = None,
+    use_insert: bool = False,
+    use_current_value: bool = False,
+    calculate_expressions: dict[str, str] = {},
+) -> str:
+    if not xlsform_expression:
+        return ""
 
-        for feature in features:
-            output_feature = QgsFeature(output_lists_fields)
-            for field_name in output_lists_field_names:
-                attribute_value = feature.attribute(
-                    output_lists_field_names.index(field_name)
-                )
-                if field_name == self.label_field_name:
-                    attribute_value = strip_tags(str(attribute_value))
-                output_feature.setAttribute(field_name, attribute_value)
-            output_lists_sink.addFeature(output_feature)
+    xlsform_expression = xlsform_expression.strip()
 
-        output_lists_sink.flushBuffer()
-        del output_lists_sink
-        output_lists_layer = QgsVectorLayer(
-            self.output_file + "|layername=" + str(writer_options.layerName),
-            writer_options.layerName,
-            "ogr",
-        )
-        output_lists_layer.setFlags(QgsMapLayer.LayerFlag.Private)
-        output_lists_layer.setCustomProperty("QFieldSync/cloud_action", "no_action")
-        output_lists_layer.setCustomProperty("QFieldSync/action", "copy")
-        self.output_project.addMapLayer(output_lists_layer)
+    expression = xlsform_expression
 
-    def convert_external_choices(self, type_details):
-        if len(type_details) < 2:
-            return False
+    # be tolerant of ‘’ by replacing them with ''
+    expression = expression.replace("‘", "'")
+    expression = expression.replace("’", "'")
 
-        from_file = " ".join(type_details[1:])
-        from_file_path = Path(self.xlsx_form_file).parent.joinpath(from_file)
-        if not from_file_path.exists():
-            return False
-
-        if self.output_project.mapLayersByName("list_" + from_file):
-            return True
-
-        output_from_file_path = Path(self.output_directory).joinpath(from_file)
-        try:
-            shutil.copy(str(from_file_path), str(output_from_file_path))
-        except Exception:
-            return False
-
-        output_from_layer = QgsVectorLayer(
-            str(output_from_file_path), "list_" + from_file, "ogr"
-        )
-        if not output_from_layer.isValid():
-            del output_from_layer
-            return False
-
-        output_from_layer.setFlags(QgsMapLayer.LayerFlag.Private)
-        output_from_layer.setCustomProperty("QFieldSync/cloud_action", "no_action")
-        output_from_layer.setCustomProperty("QFieldSync/action", "copy")
-        self.output_project.addMapLayer(output_from_layer)
-        return True
-
-    def convert_expression(
-        self,
-        original_expression,
-        use_current_value=False,
-        use_insert=False,
-        dot_field_name=None,
-    ):
-        expression = original_expression
-
-        # be tolerant of ‘’ by replacing them with ''
-        expression = expression.replace("‘", "'")
-        expression = expression.replace("’", "'")
-
-        # replace dot with field name
-        if dot_field_name:
-            expression = re.sub(
-                r"(^|[\s<>=\(\)\,])\.($|[\s<>=\(\)\,])",
-                r"\1${" + dot_field_name + r"}\2",
-                expression,
-            )
-
-        # selected(${field}, value) to ${field} = value
+    # replace dot with field name
+    if field_name:
         expression = re.sub(
-            r"selected\s*\(\s*(\$\{[^}]+})\,([^)]+)\)", r"\1 = \2", expression
+            r"(^|[\s<>=\(\)\,])\.($|[\s<>=\(\)\,])",
+            r"\1${" + field_name + r"}\2",
+            expression,
         )
 
-        # regexp(${field}, value) to regexp_match(${field}, value)
-        match = re.search(
-            r"regex\s*\(\s*(\$\{[^}]+})\s*\,\s*'(.+)'\s*\)\s*$", expression
-        )
-        if match:
-            # warning: ugly hack ahead
-            expression = re.sub(
-                r"regex\s*\(\s*(\$\{[^}]+})\s*\,\s*'(.+)'\s*\)\s*$",
-                "regexp_match(\\1, '",
-                expression,
-            )
-            expression = "{}{}')".format(
-                expression, format(match.group(2).replace("\\", "\\\\"))
-            )
-
-            expression = re.sub(
-                r"([^\[])\[:(digit|upper|lower|alpha|alnum|punct|blank|word):\]([^\]])",
-                r"\1[[:\2:]]\3",
-                expression,
-            )
-
-        if use_insert:
-            if use_current_value:
-                # ${field} = value to current_value('field')
-                for (
-                    calculate_name,
-                    calculate_expression,
-                ) in self.calculate_expressions.items():
-                    expression = re.sub(
-                        r"\$\{" + calculate_name + r"}",
-                        r"[% "
-                        + self.convert_expression(
-                            calculate_expression, use_current_value=True
-                        )
-                        + r" %]",
-                        expression,
-                    )
-                expression = re.sub(
-                    r"\$\{([^}]+)}", r"[% current_value('\1') %]", expression
-                )
-            else:
-                # ${field} = value to "field"
-                for (
-                    calculate_name,
-                    calculate_expression,
-                ) in self.calculate_expressions.items():
-                    expression = re.sub(
-                        r"\$\{" + calculate_name + r"}",
-                        r"[% "
-                        + self.convert_expression(
-                            calculate_expression, use_current_value=False
-                        )
-                        + r" %]",
-                        expression,
-                    )
-                expression = re.sub(r"\$\{([^}]+)}", r'[% "\1" %]', expression)
-        else:
-            if use_current_value:
-                # ${field} = value to current_value('field')
-                expression = re.sub(r"\$\{([^}]+)}", r"current_value('\1')", expression)
-            else:
-                # ${field} = value to "field"
-                expression = re.sub(r"\$\{([^}]+)}", r'"\1"', expression)
-
-        # today() to format_date(now()...)
-        expression = re.sub(
-            r"today\(\)", r"format_date(now(),'yyyy-MM-dd')", expression
-        )
-
-        # string-length(...) to length(...)
-        expression = re.sub(
-            r"string-length\s*\(\s*([^\)]+)\)", r"length(\1)", expression
-        )
-
-        # selected(1, 2) to 1 = 2
-        expression = re.sub(
-            r"selected\s*\(\s*(\$\{[^}]+})\,([^)]+)\)", r"\1 = \2", expression
-        )
-
-        if not use_insert:
-            expression_try = QgsExpression(expression)
-            if expression_try.hasParserError():
-                self.warning.emit(
-                    self.tr("Unsupported expression {}".format(original_expression))
-                )
-
-        return expression
-
-    def process_project_write(self, document):
-        nl = document.elementsByTagName("qgis")
-        if nl.count() == 0:
-            return
-
-        qgisNode = nl.item(0)
-
-        mapcanvasNode = document.createElement("mapcanvas")
-        mapcanvasNode.setAttribute("name", "theMapCanvas")
-        qgisNode.appendChild(mapcanvasNode)
-
-        ms = QgsMapSettings()
-        ms.setDestinationCrs(self.output_project.crs())
-        ms.setOutputSize(QSize(500, 500))
-        if self.output_extent:
-            ms.setExtent(self.output_extent)
-        ms.writeXml(mapcanvasNode, document)
-
-    def set_custom_title(self, title: str) -> None:
-        self.custom_title = title
-
-    def set_preferred_language(self, language: str) -> None:
-        self.preferred_language = language
-
-    def set_basemap(self, basemap) -> None:
-        self.basemap = basemap
-
-    def set_crs(self, crs: QgsCoordinateReferenceSystem) -> None:
-        if crs.isValid():
-            self.crs = crs
-        else:
-            self.crs = QgsCoordinateReferenceSystem("EPSG:3857")
-
-    def set_extent(self, extent):
-        self.extent = extent
-
-    def set_geometries(self, geometries):
-        self.geometries = geometries
-
-    def set_groups_as_tabs(self, groups_as_tabs):
-        self.groups_as_tabs = groups_as_tabs
-
-    def convert(
-        self,
-        output_directory,
-    ):
-        if self.survey_layer is None:
-            return ""
-
-        os.makedirs(os.path.abspath(output_directory), exist_ok=True)
-        self.output_directory = output_directory
-
-        # Settings handling
-        settings_title = "survey"
-        settings_id = ""
-        settings_language = ""
-
-        # Project-wide image max-pixel parameter
-        settings_max_pixels = 0
-
-        assert self.settings_layer is not None
-
-        if self.settings_layer.isValid():
-            it = self.settings_layer.getFeatures()
-            if self.settings_skip_first:
-                feature = QgsFeature()
-                it.nextFeature(feature)
-
-            for feature in it:  # type: ignore
-                if self.settings_form_title_index >= 0 and feature.attribute(
-                    self.settings_form_title_index
-                ):
-                    settings_title = feature.attribute(self.settings_form_title_index)
-                if self.settings_form_id_index >= 0 and feature.attribute(
-                    self.settings_form_id_index
-                ):
-                    settings_id = feature.attribute(self.settings_form_id_index)
-                if self.settings_default_language_index >= 0 and feature.attribute(
-                    self.settings_default_language_index
-                ):
-                    settings_language = feature.attribute(
-                        self.settings_default_language_index
-                    )
-                break
-
-        if self.custom_title:
-            settings_title = self.custom_title
-
-        if self.preferred_language:
-            settings_language = self.preferred_language
-
-        if settings_language != "":
-            self.label_field_name = "label::{}".format(settings_language)
-        else:
-            self.label_field_name = "label"
-
-        fields = self.survey_layer.fields().names()
-        if fields[0] == "Field1":
-            fields = self.survey_layer.getFeature(1).attributes()
-
-        self.survey_label_index = -1
-        for index, field in enumerate(fields):
-            if field.lower() == self.label_field_name.lower():
-                self.label_field_name = field
-                self.survey_label_index = index
-                break
-
-        if self.survey_label_index == -1:
-            fallback_label_field_name = ""
-            fallback_survey_label_index = -1
-            for index, field in enumerate(fields):
-                if field.lower() == "label":
-                    fallback_label_field_name = "label"
-                    fallback_survey_label_index = index
-                    break
-                elif not fallback_label_field_name and field.lower().startswith(
-                    "label::"
-                ):
-                    fallback_label_field_name = field
-                    fallback_survey_label_index = index
-
-            if fallback_survey_label_index >= 0:
-                self.label_field_name = fallback_label_field_name
-                self.survey_label_index = fallback_survey_label_index
-                if settings_language:
-                    self.info.emit(
-                        self.tr(
-                            "label::{} parameter not found in the survey layer, falling back to label".format(
-                                settings_language
-                            )
-                        )
-                    )
-                else:
-                    self.info.emit(
-                        self.tr(
-                            "Picked {} as language for the conversion".format(
-                                self.label_field_name
-                            )
-                        )
-                    )
-
-        if self.survey_label_index == -1:
-            self.error.emit(
-                self.tr(
-                    "{} parameter not found in the survey layer, aborting".format(
-                        self.label_field_name
-                    )
-                )
-            )
-            return
-
-        assert self.choices_layer is not None
-
-        if self.choices_layer.isValid():
-            fields = self.choices_layer.fields().names()
-            if fields[0] == "Field1":
-                fields = self.choices_layer.getFeature(1).attributes()
-
-            self.choices_label_index = -1
-            for index, field in enumerate(fields):
-                if field.lower() == self.label_field_name.lower():
-                    self.choices_label_index = index
-                    break
-
-            if self.choices_label_index == -1:
-                self.error.emit(
-                    self.tr(
-                        "{} parameter not found in the choices layer, aborting".format(
-                            self.label_field_name
-                        )
-                    )
-                )
-                return
-
-        settings_filename = self.custom_title if self.custom_title else settings_title
-        settings_filename = (
-            unicodedata.normalize("NFKD", settings_filename)
-            .encode("ascii", "ignore")
-            .decode("ascii")
-        )
-        settings_filename = re.sub(r"[^\w\s-]", "", settings_filename)
-        settings_filename = re.sub(r"[-\s]+", "-", settings_filename)
-
-        self.info.emit(
-            self.tr("Creating survey {} (id: {})".format(settings_title, settings_id))
-        )
-
-        # Project creationg
-        self.output_file = str(
-            os.path.join(output_directory, settings_filename + ".gpkg")
-        )
-        self.output_project = QgsProject()
-        self.output_project.setCrs(self.crs)
-
-        if self.basemap in self.BASEMAPS:
-            base_layer = QgsRasterLayer(
-                self.BASEMAPS[self.basemap],
-                self.basemap,
-                "wms",
-            )
-            self.output_project.addMapLayer(base_layer)
-
-        # Choices handling
-        output_lists_fields = QgsFields()
-        output_lists_field_names = self.choices_layer.fields().names()
-        if self.choices_skip_first:
-            output_lists_field_names = self.choices_layer.getFeature(1).attributes()
-
-        for field_name in output_lists_field_names:
-            output_lists_fields.append(QgsField(field_name, QMetaType.Type.QString))
-
-        lists = {}
-
-        it = self.choices_layer.getFeatures()
-        if self.choices_skip_first:
-            feature = QgsFeature()
-            it.nextFeature(feature)
-
-        for feature in it:  # type: ignore
-            list_name = feature.attribute(self.choices_list_name_index)
-            if not list_name:
-                continue
-
-            list_name = str(list_name)
-            if list_name not in lists:
-                lists[list_name] = []
-            lists[list_name].append(feature)
-
-        for list_name, features in lists.items():
-            self.convert_choices(
-                list_name, features, output_lists_field_names, output_lists_fields
-            )
-
-        # External choices handling
-        it = self.survey_layer.getFeatures()
-        if self.survey_skip_first:
-            feature = QgsFeature()
-            it.nextFeature(feature)
-
-        for feature in it:  # type: ignore
-            feature_type = (
-                str(feature.attribute(self.survey_type_index)).strip().lower()
-            )
-            type_details = feature_type.split(" ")
-            if (
-                type_details[0] == "select_multiple_from_file"
-                or type_details[0] == "select_single_from_file"
-            ):
-                if not self.convert_external_choices(type_details):
-                    self.warning.emit(
-                        self.tr(
-                            "Select from file could not be converted, {} turned into text field".format(
-                                feature.attribute(self.survey_name_index)
-                            )
-                        )
-                    )
-
-        # Survey handling
-        self.calculate_expressions = {}
-
-        current_layer = [self.create_layer()]
-        self.output_project.addMapLayer(current_layer[-1])
-
-        current_editor_form = [current_layer[-1].editFormConfig()]
-        invisible_root = current_editor_form[-1].invisibleRootContainer()
-
-        assert invisible_root is not None
-
-        invisible_root.clear()
-
-        current_editor_form[-1].setLayout(Qgis.AttributeFormLayout.DragAndDrop)
-
-        current_editor_group_level = [0]
-
-        current_container = [
-            QgsAttributeEditorContainer(
-                "Survey", current_editor_form[-1].invisibleRootContainer()
-            )
-        ]
-        current_container[-1].setType(Qgis.AttributeEditorContainerType.Tab)
-
-        invisible_root = current_editor_form[-1].invisibleRootContainer()
-
-        assert invisible_root is not None
-
-        invisible_root.addChildElement(current_container[-1])
-
-        relation_context = QgsRelationContext(self.output_project)
-
-        it = self.survey_layer.getFeatures()
-        if self.survey_skip_first:
-            feature = QgsFeature()
-            it.nextFeature(feature)
-
-        for feature in it:  # type: ignore
-            if not feature.attribute(self.survey_type_index):
-                continue
-
-            feature_type = (
-                str(feature.attribute(self.survey_type_index)).strip().lower()
-            )
-            feature_name = str(feature.attribute(self.survey_name_index)).strip()
-            feature_label = (
-                str(feature.attribute(self.survey_label_index)).strip()
-                if feature.attribute(self.survey_label_index)
-                else ""
-            )
-
-            field_index = current_layer[-1].fields().indexOf(feature_name)
-
-            relevant_container = None
-            relevant_expression = (
-                str(feature.attribute(self.survey_relevant_index)).strip()
-                if self.survey_relevant_index >= 0
-                and feature.attribute(self.survey_relevant_index)
-                else ""
-            )
-            if relevant_expression != "":
-                relevant_expression = self.convert_expression(relevant_expression)
-                if field_index >= 0 or feature_type == "begin repeat":
-                    relevant_container = QgsAttributeEditorContainer(
-                        feature_name + " - relevant", current_container[-1]
-                    )
-                    relevant_container.setShowLabel(False)
-                    relevant_container.setType(
-                        Qgis.AttributeEditorContainerType.GroupBox
-                    )
-                    relevant_container.setVisibilityExpression(
-                        QgsOptionalExpression(QgsExpression(relevant_expression))
-                    )
-
-            if feature_type == "begin repeat" or feature_type == "begin_repeat":
-                current_layer.append(self.create_layer(feature_name))
-                self.output_project.addMapLayer(current_layer[-1])
-
-                current_editor_form.append(current_layer[-1].editFormConfig())
-                invisible_root = current_editor_form[-1].invisibleRootContainer()
-
-                assert invisible_root is not None
-
-                invisible_root.clear()
-                current_editor_form[-1].setLayout(Qgis.AttributeFormLayout.DragAndDrop)
-
-                current_editor_group_level.append(0)
-
-                current_container.append(
-                    QgsAttributeEditorContainer(
-                        "Survey", current_editor_form[-1].invisibleRootContainer()
-                    )
-                )
-                current_container[-1].setType(Qgis.AttributeEditorContainerType.Tab)
-                invisible_root = current_editor_form[-1].invisibleRootContainer()
-
-                assert invisible_root is not None
-
-                invisible_root.addChildElement(current_container[-1])
-
-                relation = QgsRelation(relation_context)
-                relation.setName(feature_name)
-                relation.setReferencedLayer(current_layer[-2].id())
-                relation.setReferencingLayer(current_layer[-1].id())
-                relation.addFieldPair("uuid_parent", "uuid")
-                relation.generateId()
-
-                relation_manager = self.output_project.relationManager()
-
-                assert relation_manager is not None
-
-                relation_manager.addRelation(relation)
-
-                editor_relation = QgsAttributeEditorRelation(
-                    feature_name,
-                    relation.id(),
-                    current_editor_form[-2].invisibleRootContainer(),
-                )
-                feature_label = strip_tags(feature_label)
-                editor_relation.setLabel(feature_label)
-                editor_relation.setShowLabel(feature_label != "")
-                if relevant_container:
-                    relevant_container.addChildElement(editor_relation)
-                    current_container[-2].addChildElement(relevant_container)
-                else:
-                    current_container[-2].addChildElement(editor_relation)
-            elif feature_type == "end repeat" or feature_type == "end_repeat":
-                if len(current_layer) > 1:
-                    current_container.pop()
-                    current_editor_group_level.pop()
-                    current_layer[-1].setEditFormConfig(current_editor_form[-1])
-                    current_layer.pop()
-                    current_editor_form.pop()
-            elif feature_type == "begin group" or feature_type == "begin_group":
-                feature_label = strip_tags(feature_label)
-
-                if self.groups_as_tabs and current_editor_group_level[-1] == 0:
-                    current_container.append(
-                        QgsAttributeEditorContainer(
-                            feature_label,
-                            current_editor_form[-1].invisibleRootContainer(),
-                        )
-                    )
-                    current_container[-1].setType(Qgis.AttributeEditorContainerType.Tab)
-                    if relevant_expression != "":
-                        current_container[-1].setVisibilityExpression(
-                            QgsOptionalExpression(QgsExpression(relevant_expression))
-                        )
-                    invisible_root = current_editor_form[-1].invisibleRootContainer()
-
-                    assert invisible_root is not None
-
-                    invisible_root.addChildElement(current_container[-1])
-                    current_editor_group_level[-1] = current_editor_group_level[-1] + 1
-                else:
-                    current_container.append(
-                        QgsAttributeEditorContainer(
-                            feature_label, current_container[-1]
-                        )
-                    )
-                    current_container[-1].setType(
-                        Qgis.AttributeEditorContainerType.GroupBox
-                    )
-                    current_container[-1].setShowLabel(feature_label != "")
-                    if relevant_expression != "":
-                        current_container[-1].setVisibilityExpression(
-                            QgsOptionalExpression(QgsExpression(relevant_expression))
-                        )
-                    current_container[-2].addChildElement(current_container[-1])
-                    current_editor_group_level[-1] = current_editor_group_level[-1] + 1
-            elif feature_type == "end group" or feature_type == "end_group":
-                if len(current_container) > 1:
-                    current_container.pop()
-                    current_editor_group_level[-1] = current_editor_group_level[-1] - 1
-            elif feature_type == "note":
-                editor_text = QgsAttributeEditorTextElement(
-                    feature_name, current_container[-1]
-                )
-
-                if "markdown" in sys.modules:
-                    assert markdown  # type: ignore
-
-                    feature_label = markdown.markdown(feature_label)
-
-                editor_text.setText(
-                    self.convert_expression(
-                        feature_label, use_current_value=True, use_insert=True
-                    )
-                )
-                editor_text.setShowLabel(False)
-                current_container[-1].addChildElement(editor_text)
-            elif field_index >= 0:
-                editor_widget = None
-                editor_element = None
-
-                editor_widget = self.create_editor_widget(feature)
-                if editor_widget:
-                    current_layer[-1].setEditorWidgetSetup(field_index, editor_widget)
-                    editor_element = QgsAttributeEditorField(
-                        feature_name, field_index, current_container[-1]
-                    )
-
-                    if (
-                        editor_widget.type() != "Hidden"
-                        and feature_label.find("${") >= 0
-                    ):
-                        # Data-defined label
-                        prop = QgsProperty()
-                        prop.setExpressionString(
-                            self.convert_label_expression(feature_label)
-                        )
-                        props = QgsPropertyCollection()
-                        props.setProperty(
-                            QgsEditFormConfig.DataDefinedProperty.Alias, prop
-                        )
-                        current_editor_form[-1].setDataDefinedFieldProperties(
-                            feature_name, props
-                        )
-
-                    if feature_type == "calculate" or feature_type == "hidden":
-                        editor_element.setShowLabel(editor_widget.type() != "Hidden")
-                        current_editor_form[-1].setReadOnly(field_index, True)
-                    elif (
-                        feature_type == "today"
-                        or feature_type == "start"
-                        or feature_type == "end"
-                        or feature_type == "username"
-                        or feature_type == "email"
-                    ):
-                        editor_element.setShowLabel(False)
-                        current_editor_form[-1].setReadOnly(field_index, True)
-
-                        if feature_type == "today":
-                            current_layer[-1].setDefaultValueDefinition(
-                                field_index,
-                                QgsDefaultValue(
-                                    "format_date(now(), 'yyyy-MM-dd')", False
-                                ),
-                            )
-                        elif feature_type == "start" or feature_type == "end":
-                            current_layer[-1].setDefaultValueDefinition(
-                                field_index,
-                                QgsDefaultValue(
-                                    "format_date(now(), 'yyyy-MM-dd hh:mm:ss')",
-                                    feature_type == "end",
-                                ),
-                            )
-                        elif feature_type == "username":
-                            current_layer[-1].setDefaultValueDefinition(
-                                field_index, QgsDefaultValue("@cloud_username", False)
-                            )
-                        elif feature_type == "email":
-                            current_layer[-1].setDefaultValueDefinition(
-                                field_index, QgsDefaultValue("@cloud_useremail", False)
-                            )
-                    elif self.survey_read_only_index >= 0:
-                        field_read_only = (
-                            str(feature.attribute(self.survey_read_only_index))
-                            .strip()
-                            .lower()
-                            if feature.attribute(self.survey_read_only_index)
-                            else ""
-                        )
-                        current_editor_form[-1].setReadOnly(
-                            field_index, field_read_only == "yes"
-                        )
-
-                    if relevant_container:
-                        relevant_container.addChildElement(editor_element)
-                        current_container[-1].addChildElement(relevant_container)
-                    else:
-                        current_container[-1].addChildElement(editor_element)
-
-                    current_editor_form[-1].setLabelOnTop(field_index, True)
-
-                field_trigger = (
-                    str(feature.attribute(self.survey_trigger_index)).strip()
-                    if self.survey_trigger_index >= 0
-                    and feature.attribute(self.survey_trigger_index)
-                    else ""
-                )
-                if field_trigger != "":
-                    self.warning.emit(
-                        "Unsupported trigger option for {}, ignored".format(
-                            feature_name
-                        )
-                    )
-
-                field_calculation = (
-                    str(feature.attribute(self.survey_calculation_index)).strip()
-                    if self.survey_calculation_index >= 0
-                    and feature.attribute(self.survey_calculation_index)
-                    else ""
-                )
-                field_default = (
-                    str(feature.attribute(self.survey_default_index)).strip()
-                    if self.survey_default_index >= 0
-                    and feature.attribute(self.survey_default_index)
-                    else ""
-                )
-                if field_calculation != "":
-                    current_layer[-1].setDefaultValueDefinition(
-                        field_index,
-                        QgsDefaultValue(
-                            self.convert_expression(field_calculation),
-                            feature_type == "calculate" or feature_type == "hidden",
-                        ),
-                    )
-                elif field_default != "":
-                    if "${last-saved" not in field_default:
-                        is_digit = field_default.replace(".", "", 1).isdigit()
-                        current_layer[-1].setDefaultValueDefinition(
-                            field_index,
-                            QgsDefaultValue(
-                                field_default
-                                if is_digit
-                                else "'{}'".format(field_default),
-                                False,
-                            ),
-                        )
-
-                # project-wide max-pixels handling
-                if feature_type == "image" and self.survey_parameters_index >= 0:
-                    parameters = str(feature.attribute(self.survey_parameters_index))
-                    image_max_pixels = re.search(
-                        r"max-pixels=\s*([0-9]+)", parameters, flags=re.IGNORECASE
-                    )
-                    image_max_pixels = (
-                        int(image_max_pixels.group(1)) if image_max_pixels else 0
-                    )
-                    if image_max_pixels > 0:
-                        if settings_max_pixels > -1:
-                            if settings_max_pixels == 0:
-                                # first max-pixels definition, adopt value
-                                settings_max_pixels = image_max_pixels
-                            elif settings_max_pixels != image_max_pixels:
-                                # multiple max-pixels definition, adopt the largest value
-                                settings_max_pixels = max(
-                                    settings_max_pixels, image_max_pixels
-                                )
-                                self.warning.emit(
-                                    self.tr(
-                                        "Due to the presence of a mix of image attributes having max-pixels parameter of varying values, the largest max-pixels value will be applied"
-                                    )
-                                )
-                        else:
-                            self.warning.emit(
-                                self.tr(
-                                    "Due to the presence of a mix of image attributes having defined and undefined max-pixels parameter, the parameter has been ignored"
-                                )
-                            )
-                    elif settings_max_pixels >= 0:
-                        # image with missing max-pixels, prevent maximum value
-                        if settings_max_pixels > 0:
-                            self.warning.emit(
-                                self.tr(
-                                    "Due to the presence of a mix of image attributes having defined and undefined max-pixels parameter, the parameter has been ignored"
-                                )
-                            )
-                        settings_max_pixels = -1
-
-            elif (
-                feature_type == "geopoint"
-                or feature_type == "geotrace"
-                or feature_type == "geoshape"
-                or feature_type == "start-geopoint"
-                or feature_type == "start-geotrace"
-                or feature_type == "start-geoshape"
-            ):
-                continue
-            else:
-                type_details = str(feature.attribute(self.survey_type_index)).split(" ")
-                type_details[0] = type_details[0].lower()
-                if (
-                    type_details[0] not in self.FIELD_TYPES
-                    and type_details[0] not in self.METADATA_TYPES
-                ):
-                    self.warning.emit(
-                        self.tr("Unsupported type {}, skipping".format(feature_type))
-                    )
-
-        current_layer[0].setEditFormConfig(current_editor_form[0])
-
-        if settings_max_pixels > 0:
-            self.output_project.writeEntry(
-                "qfieldsync", "maximumImageWidthHeight", settings_max_pixels
-            )
-
-        output_project_file = str(
-            os.path.join(output_directory, settings_filename + ".qgz")
-        )
-        self.output_project.writeProject.connect(self.process_project_write)
-        self.output_project.write(output_project_file)
-
-        survey_extent = None
-        if (
-            self.geometries
-            and current_layer[0].geometryType() != Qgis.GeometryType.Null
-            and current_layer[0].geometryType() != Qgis.GeometryType.Unknown
-        ):
-            if current_layer[0].geometryType() == QgsWkbTypes.geometryType(
-                self.geometries.wkbType()
-            ):
-                current_layer[0].startEditing()
-
-                request = QgsFeatureRequest()
-                request.setDestinationCrs(
-                    current_layer[0].crs(), self.output_project.transformContext()
-                )
-                geometries_iterator = self.geometries.getFeatures(request)
-                for feature in geometries_iterator:
-                    output_features = QgsVectorLayerUtils.makeFeatureCompatible(
-                        feature,
-                        current_layer[0],
-                        QgsFeatureSink.SinkFlag.RegeneratePrimaryKey,
-                    )
-                    if output_features:
-                        current_layer[0].addFeature(
-                            output_features[0], QgsFeatureSink.Flag.FastInsert
-                        )
-
-                current_layer[0].commitChanges()
-                if not current_layer[0].extent().isEmpty():
-                    survey_extent = current_layer[0].extent()
-            else:
-                self.warning.emit(
-                    self.tr(
-                        "The geometries' type does not match the output survey layer, skipping"
-                    )
-                )
-
-        if not self.extent.isEmpty():
-            survey_extent = self.extent
-        elif survey_extent:
-            transform = QgsCoordinateTransform(
-                current_layer[0].crs(),
-                self.output_project.crs(),
-                self.output_project.transformContext(),
-            )
-            try:
-                survey_extent = transform.transformBoundingBox(survey_extent)
-                if (
-                    self.output_project.crs().mapUnits() != Qgis.DistanceUnit.Unknown
-                    and self.output_project.crs().mapUnits()
-                    != Qgis.DistanceUnit.Degrees
-                ):
-                    # Insure the initial project extent is not too zoomed in
-                    if survey_extent.width() < 200:
-                        padding = (200 - survey_extent.width()) / 2
-                        survey_extent.setXMinimum(survey_extent.xMinimum() - padding)
-                        survey_extent.setXMaximum(survey_extent.xMaximum() + padding)
-                    if survey_extent.height() < 200:
-                        padding = (200 - survey_extent.height()) / 2
-                        survey_extent.setYMinimum(survey_extent.yMinimum() - padding)
-                        survey_extent.setYMaximum(survey_extent.yMaximum() + padding)
-
-                    survey_extent.scale(1.05)
-                    self.output_extent = survey_extent
-            except QgsCsException:
-                survey_extent = None
-
-        if not survey_extent:
-            if self.output_project.crs().authid() == "EPSG:3857":
-                survey_extent = QgsRectangle(-9.88, 33.41, 40.97, 61.11)
-            else:
-                survey_extent = self.output_project.crs().bounds()
-                if survey_extent.width() < survey_extent.height():
-                    survey_extent.setYMinimum(
-                        survey_extent.yMinimum()
-                        + survey_extent.height() / 2
-                        - survey_extent.width() / 2
-                    )
-                    survey_extent.setYMaximum(
-                        survey_extent.yMinimum()
-                        + survey_extent.height() / 2
-                        + survey_extent.width() / 2
-                    )
-                else:
-                    survey_extent.setXMinimum(
-                        survey_extent.xMinimum()
-                        + survey_extent.width() / 2
-                        - survey_extent.height() / 2
-                    )
-                    survey_extent.setXMaximum(
-                        survey_extent.xMinimum()
-                        + survey_extent.width() / 2
-                        + survey_extent.height() / 2
-                    )
-
-            transform = QgsCoordinateTransform(
-                QgsCoordinateReferenceSystem("EPSG:4326"),
-                self.output_project.crs(),
-                self.output_project.transformContext(),
-            )
-            survey_extent = transform.transformBoundingBox(survey_extent)
-
-        self.output_extent = survey_extent
-
-        # Set QField state to digitize when first opening the generated project
-        self.output_project.writeEntry("qfieldsync", "initialMapMode", "digitize")
-
-        if self.output_project.crs().authid() == "EPSG:3857":
-            display_settings = self.output_project.displaySettings()
-
-            assert display_settings
-
-            # Display coordinates in WGS84 to provide a more useful experience for the average person
-            display_settings.setCoordinateType(Qgis.CoordinateDisplayType.CustomCrs)
-            display_settings.setCoordinateCustomCrs(
-                QgsCoordinateReferenceSystem("EPSG:4326")
-            )
-
-        output_project_file = str(
-            os.path.join(output_directory, settings_filename + ".qgz")
-        )
-        self.output_project.writeProject.connect(self.process_project_write)
-        self.output_project.write(output_project_file)
-
-        return output_project_file
-
-
-def main():
-    parser = argparse.ArgumentParser(description="Convert an XLSForm to a QGIS project")
-    parser.add_argument("input_xlsform", help="Path to the input XLSForm file")
-    parser.add_argument(
-        "output_directory", help="Directory to save the output QGIS project"
+    # selected(${field}, value) to ${field} = value
+    expression = re.sub(
+        r"selected\s*\(\s*(\$\{[^}]+})\,([^)]+)\)", r"\1 =\2", expression
     )
 
-    args = parser.parse_args()
+    # regexp(${field}, value) to regexp_match(${field}, value)
+    match = re.search(r"regex\s*\(\s*(\$\{[^}]+})\s*\,\s*'(.+)'\s*\)\s*$", expression)
+    if match:
+        # warning: ugly hack ahead
+        expression = re.sub(
+            r"regex\s*\(\s*(\$\{[^}]+})\s*\,\s*'(.+)'\s*\)\s*$",
+            "regexp_match(\\1, '",
+            expression,
+        )
+        expression = "{}{}')".format(
+            expression, format(match.group(2).replace("\\", "\\\\"))
+        )
 
-    input_xlsform = args.input_xlsform
-    output_directory = args.output_directory
+        expression = re.sub(
+            r"([^\[])\[:(digit|upper|lower|alpha|alnum|punct|blank|word):\]([^\]])",
+            r"\1[[:\2:]]\3",
+            expression,
+        )
 
-    converter = XLSFormConverter(input_xlsform)
-    converter.convert(output_directory)
+    if use_insert:
+        if use_current_value:
+            # ${field} = value to current_value('field')
+            for (
+                calculate_name,
+                calculate_expression,
+            ) in calculate_expressions.items():
+                expression = re.sub(
+                    r"\$\{" + calculate_name + r"}",
+                    r"[% "
+                    + xlsform_to_qgis_expression(
+                        calculate_expression, use_current_value=True
+                    )
+                    + r" %]",
+                    expression,
+                )
+            expression = re.sub(
+                r"\$\{([^}]+)}", r"[% current_value('\1') %]", expression
+            )
+        else:
+            # ${field} = value to "field"
+            for (
+                calculate_name,
+                calculate_expression,
+            ) in calculate_expressions.items():
+                expression = re.sub(
+                    r"\$\{" + calculate_name + r"}",
+                    r"[% "
+                    + xlsform_to_qgis_expression(
+                        calculate_expression, use_current_value=False
+                    )
+                    + r" %]",
+                    expression,
+                )
+            expression = re.sub(r"\$\{([^}]+)}", r'[% "\1" %]', expression)
+    else:
+        if use_current_value:
+            # ${field} = value to current_value('field')
+            expression = re.sub(r"\$\{([^}]+)}", r"current_value('\1')", expression)
+        else:
+            # ${field} = value to "field"
+            expression = re.sub(r"\$\{([^}]+)}", r'"\1"', expression)
+
+    # today() to format_date(now()...)
+    expression = re.sub(r"today\(\)", r"format_date(now(),'yyyy-MM-dd')", expression)
+
+    # string-length(...) to length(...)
+    expression = re.sub(r"string-length\s*\(\s*([^\)]+)\)", r"length( \1 )", expression)
+
+    # selected(1, 2) to 1 = 2
+    expression = re.sub(
+        r"selected\s*\(\s*(\$\{[^}]+})\,([^)]+)\)", r"\1 = \2", expression
+    )
+
+    if not use_insert:
+        expression_try = QgsExpression(expression)
+        if expression_try.hasParserError():
+            logger.warning(
+                QObject().tr("Unsupported expression {}".format(xlsform_expression))
+            )
+
+    return expression
 
 
-def main_cli():
-    from xlsform2qgis.qgis_utils import start_app, stop_app
+def get_xlsform_type(raw_xls_type: str) -> str:
+    xlsform_type, *_ = str(raw_xls_type).split(" ", 1)
+    xlsform_type = xlsform_type.strip().lower()
 
-    try:
-        start_app()
-        main()
-        print("Success!")
-    except Exception as e:
-        print(f"Failed to start QGIS application: {e}")
-        sys.exit(1)
-    finally:
-        stop_app()
+    return xlsform_type
 
 
-if __name__ == "__main__":
-    main_cli()
+def build_choices_layer_id(*parts: str) -> str:
+    return "_".join(["list", *parts])
+
+
+registry: dict[str, Callable[[XLSFormConverter, dict[str, Any]], ParsedRow]] = {}
+
+
+def get_widget_type_callback(
+    row: dict[str, Any],
+) -> Callable[[XLSFormConverter, dict[str, Any]], ParsedRow] | None:
+    cb = registry.get(row["type"])
+
+    if not cb:
+        cb = registry.get(get_xlsform_type(row["type"]))
+
+    return cb
+
+
+def register_type(format_name: list[str]) -> Callable:
+    def decorator(func):
+        for name in format_name:
+            if name in registry:
+                raise ValueError(f"Widget type {name} already registered!")
+
+            registry[name] = func
+        return func
+
+    return decorator
+
+
+@register_type(["calculate"])
+def widget_calculate(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow:
+    form_item: WeakFieldDef = {}
+
+    if row["calculation"]:
+        form_item.update(
+            {
+                "default_value": xlsform_to_qgis_expression(row["calculation"]),
+                "set_default_value_on_update": True,
+            }
+        )
+
+    return ParsedRow(
+        field={
+            "widget_type": "TextEdit",
+            **form_item,  # type: ignore
+        },
+        form_item={
+            "is_read_only": True,
+            "show_label": False,
+        },
+    )
+
+
+@register_type(["hidden"])
+def widget_hidden(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow:
+    field: WeakFieldDef = {}
+
+    if row["calculation"]:
+        field.update(
+            {
+                "default_value": xlsform_to_qgis_expression(row["calculation"]),
+                "set_default_value_on_update": True,
+            }
+        )
+
+    return ParsedRow(
+        field={
+            "widget_type": "Hidden",
+            **field,  # type: ignore
+        },
+        form_item={
+            "is_read_only": True,
+            "show_label": False,
+        },
+    )
+
+
+@register_type(["today"])
+def widget_today(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow:
+    return ParsedRow(
+        field={
+            "widget_type": "Hidden",
+            "default_value": "format_date(now(), 'yyyy-MM-dd'",
+            "set_default_value_on_update": False,
+        },
+        form_item={
+            "show_label": False,
+            "is_read_only": True,
+        },
+    )
+
+
+@register_type(["start"])
+def widget_start(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow:
+    return ParsedRow(
+        field={
+            "widget_type": "Hidden",
+            "default_value": "format_date(now(), 'yyyy-MM-dd hh:mm:ss')",
+            "set_default_value_on_update": False,
+        },
+        form_item={
+            "show_label": False,
+            "is_read_only": True,
+        },
+    )
+
+
+@register_type(["end"])
+def widget_end(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow:
+    return ParsedRow(
+        field={
+            "widget_type": "Hidden",
+            "default_value": "format_date(now(), 'yyyy-MM-dd hh:mm:ss')",
+            "set_default_value_on_update": True,
+        },
+        form_item={
+            "show_label": False,
+            "is_read_only": True,
+        },
+    )
+
+
+@register_type(["username"])
+def widget_username(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow:
+    return ParsedRow(
+        field={
+            "widget_type": "Hidden",
+            "default_value": "@cloud_username",
+            "set_default_value_on_update": False,
+        },
+        form_item={
+            "show_label": False,
+            "is_read_only": True,
+        },
+    )
+
+
+@register_type(["email"])
+def widget_email(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow:
+    return ParsedRow(
+        field={
+            "widget_type": "Hidden",
+            "default_value": "@cloud_useremail",
+            "set_default_value_on_update": False,
+        },
+        form_item={
+            "show_label": False,
+            "is_read_only": True,
+        },
+    )
+
+
+@register_type(["text", "barcode"])
+def widget_text(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow:
+    widget_config = {}
+    if row["appearance"] == "multiline":
+        widget_config.update(
+            {
+                "IsMultiline": True,
+            }
+        )
+
+    return ParsedRow(
+        field={
+            "type": "string",
+            "widget_type": "TextEdit",
+            "widget_config": widget_config,
+        },
+    )
+
+
+@register_type(["acknowledge"])
+def widget_acknowledge(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow:
+    return ParsedRow(
+        field={
+            "widget_type": "CheckBox",
+        }
+    )
+
+
+@register_type(["integer", "decimal"])
+def widget_numeric(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow:
+    return ParsedRow(
+        field={
+            "widget_type": "Range",
+        }
+    )
+
+
+@register_type(["range"])
+def widget_range(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow:
+    if row["parameters"]:
+        start, end, step = parse_xlsform_range_parameters(row["parameters"])
+
+        widget_config = {
+            "Min": start,
+            "Max": end,
+            "Step": step,
+        }
+    else:
+        widget_config = {}
+
+    return ParsedRow(
+        field={
+            "widget_type": "Range",
+            "widget_config": widget_config,
+        }
+    )
+
+
+@register_type(["date", "time", "datetime"])
+def widget_datetime(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow:
+    if row["type"] == "date":
+        datetime_format = "YYYY-MM-DD"
+    elif row["type"] == "time":
+        datetime_format = "HH:mm:ss"
+    elif row["type"] == "datetime":
+        datetime_format = "YYYY-MM-DD HH:mm:ss"
+    else:
+        raise ValueError(f"Unsupported xlsform type for date/time: {row['type']}")
+
+    return ParsedRow(
+        field={
+            "widget_type": "DateTime",
+            "widget_config": {
+                "field_format_overwrite": True,
+                "display_format": datetime_format,
+                "field_format": datetime_format,
+                "allow_null": True,
+                "calendar_popup": True,
+            },
+        }
+    )
+
+
+@register_type(["image", "audio", "video", "background-audio", "file"])
+def widget_media(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow:
+    if row["type"] == "image":
+        document_viewer = 1
+    elif row["type"] in ("audio", "background-audio"):
+        document_viewer = 2
+    elif row["type"] == "video":
+        document_viewer = 3
+    else:
+        document_viewer = 0
+
+    return ParsedRow(
+        field={
+            "widget_type": "ExternalResource",
+            "widget_config": {
+                "DocumentViewer": document_viewer,
+                "FileWidget": True,
+                "FileWidgetButton": True,
+                "RelativeStorage": 1,
+            },
+        }
+    )
+
+
+@register_type(
+    [
+        "select_one",
+        "select_multiple",
+        "select_one_from_file",
+        "select_multiple_from_file",
+    ]
+)
+def widget_select_from_file(
+    converter: XLSFormConverter, row: dict[str, Any]
+) -> ParsedRow:
+    layer: WeakLayerDef = {}
+    xlsform_type, *type_details = str(row["type"]).strip().split(" ")
+    layer_id = build_choices_layer_id(*type_details)
+
+    if xlsform_type in (
+        "select_one_from_file",
+        "select_multiple_from_file",
+    ):
+        list_key, list_value = parse_xlsform_select_from_file_parameters(
+            row["parameters"]
+        )
+
+        raise NotImplementedError(
+            "select_from_file and select_multiple_from_file not implemented yet"
+        )
+        # layers.append(
+        #     generate_layer_def(
+        #         id=layer_id,
+        #         name=layer_id,
+        #         fields=fields_def,
+        #         is_private=True,
+        #         custom_properties={
+        #             "QFieldSync/cloud_action": "no_action",
+        #             "QFieldSync/action": "copy",
+        #         },
+        #         data=list_choices,
+        #         # TODO @suricactus: build the layer properly
+        #     )
+        # )
+
+    else:
+        list_key = "name"
+        list_value = "label"
+
+        assert converter.find_layer(layer_id)
+
+    filter_expressions = []
+    filter_expressions.append(xlsform_to_qgis_expression(row["choice_filter"]))
+
+    if xlsform_type in ("select_multiple", "select_multiple_from_file"):
+        allow_multi = True
+
+        # TODO @suricactus: why do we need this expression?
+        filter_expressions.append(f""" "{list_key}" != '' """)
+    else:
+        allow_multi = False
+
+    filter_expression = " AND ".join(
+        # join together all non-empty filter expressions, as the first element might be an empty string
+        [fe for fe in filter_expressions if fe]
+    )
+
+    return ParsedRow(
+        field={
+            "widget_type": "ValueRelation",
+            "widget_config": {
+                "Layer": layer_id,
+                "LayerName": type_details[0],
+                # TODO @suricactus: confirm these are not required properties, as we already have the layer ID above
+                # "LayerProviderName": "ogr",
+                # "LayerSource": value_layer[0].source(),
+                "Key": list_key,
+                "Value": list_value,
+                "AllowNull": False,
+                "AllowMulti": allow_multi,
+                "FilterExpression": filter_expression,
+            },
+        },
+        layer=layer,
+    )
+
+
+@register_type(
+    [
+        "geopoint",
+        "geotrace",
+        "geoshape",
+        "start-geopoint",
+        "start-geotrace",
+        "start-geoshape",
+    ]
+)
+def widget_geometry(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow:
+    geom = Qgis.WkbType.NoGeometry
+
+    if row["type"] in ("geopoint", "start-geopoint"):
+        geom = Qgis.WkbType.MultiPoint
+
+    if row["type"] in ("geotrace", "start-geotrace"):
+        geom = Qgis.WkbType.MultiLineString
+
+    if row["type"] in ("geoshape", "start-geoshape"):
+        geom = Qgis.WkbType.MultiPolygon
+
+    return ParsedRow(
+        geometry=geom,
+    )
+
+
+@register_type(["begin group", "begin_group"])
+def widget_begin_group(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow:
+    container_id = f"item_container_{row['idx']}"
+    label = strip_tags(row["label"])
+
+    if row["relevant"]:
+        visibility_expression = xlsform_to_qgis_expression(row["relevant"])
+    else:
+        visibility_expression = ""
+
+    return ParsedRow(
+        container={
+            "id": container_id,
+            "name": label,
+            # NOTE in the original converter, we cannot have tabs if we are on level 2
+            "type": converter.form_group_type,
+            "visibility_expression": visibility_expression,
+        },
+        group_status=GroupStatus.BEGIN,
+    )
+
+
+@register_type(["end group", "end_group"])
+def widget_end_group(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow:
+    return ParsedRow(
+        group_status=GroupStatus.END,
+    )
+
+
+@register_type(["note"])
+def widget_note(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow:
+    container_id = f"item_container_{row['idx']}"
+    label = strip_tags(row["label"])
+    visibility_expression = xlsform_to_qgis_expression(row["relevant"])
+
+    return ParsedRow(
+        container={
+            "id": container_id,
+            "name": label,
+            "type": "group_box",
+            "visibility_expression": visibility_expression,
+            "is_markdown": False,
+        },
+    )
+
+
+@register_type(["begin repeat", "begin_repeat"])
+def widget_begin_repeat(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow:
+    layer_id = f"layer_repeat_{row['idx']}"
+    layer: WeakLayerDef = {
+        "layer_id": layer_id,
+        "name": row["name"],
+        "geometry_type": "NoGeometry",
+        "type": "vector",
+        "fields": [
+            generate_field_def(
+                name="uuid",
+                type="string",
+                alias="UUID",
+            ),
+            generate_field_def(
+                name="uuid_parent",
+                type="string",
+                alias="Parent UUID",
+            ),
+        ],
+    }
+
+    relation = {
+        "id": f"relation_{row['idx']}",
+        "name": f"relation_{row['idx']}",
+        "to_layer": converter.layers[-1]["layer_id"],
+        "from_layer": layer_id,
+        "field_pairs": [
+            {
+                "to_field": "uuid",
+                "from_field": "uuid_parent",
+            }
+        ],
+    }
+
+    form_item: WeakFormItemDef = {
+        "id": f"relation_{row['idx']}",
+        "name": strip_tags(row["label"]),
+        "type": "relation",
+    }
+
+    return ParsedRow(
+        layer=layer,
+        relation=relation,
+        form_item=form_item,
+        container={
+            "id": f"item_container_{row['idx']}",
+            "name": strip_tags(row["label"]),
+            "type": "group_box",
+            "visibility_expression": xlsform_to_qgis_expression(row["relevant"]),
+            "is_markdown": False,
+        },
+        group_status=GroupStatus.BEGIN,
+        layer_status=LayerStatus.BEGIN,
+    )
+
+
+@register_type(["end repeat", "end_repeat"])
+def widget_end_repeat(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow:
+    return ParsedRow(
+        group_status=GroupStatus.END,
+        layer_status=LayerStatus.END,
+    )
