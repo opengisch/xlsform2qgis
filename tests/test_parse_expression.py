@@ -6,9 +6,11 @@ class TestXlsformToQgisExpression:
         assert xlsform_to_qgis_expression("") == ""
         assert xlsform_to_qgis_expression("   ") == ""
 
-    def test_simple_field_reference(self):
-        assert xlsform_to_qgis_expression("${field}") == '"field"'
-        assert xlsform_to_qgis_expression("${my_field}") == '"my_field"'
+    def test_funky_quotes(self):
+        assert (
+            xlsform_to_qgis_expression("‘sample’ || “text” || ‚more‘ || „text“")
+            == "'sample' || \"text\" || 'more' || \"text\""
+        )
 
     def test_curly_quote_normalization(self):
         expression = xlsform_to_qgis_expression("'text' and 'more'")
@@ -27,6 +29,10 @@ class TestXlsformToQgisExpression:
             xlsform_to_qgis_expression("selected(${choice}, 'value')")
             == "\"choice\" = 'value'"
         )
+
+    def test_simple_field_reference(self):
+        assert xlsform_to_qgis_expression("${field}") == '"field"'
+        assert xlsform_to_qgis_expression("${my_field}") == '"my_field"'
 
     def test_regex_function_conversion(self):
         result = xlsform_to_qgis_expression("regex(${field}, '^[0-9]+$')")

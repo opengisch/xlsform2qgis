@@ -833,6 +833,10 @@ def xlsform_to_qgis_expression(
     # be tolerant of ‘’ by replacing them with ''
     expression = expression.replace("‘", "'")
     expression = expression.replace("’", "'")
+    expression = expression.replace("‚", "'")
+    expression = expression.replace("„", '"')
+    expression = expression.replace("“", '"')
+    expression = expression.replace("”", '"')
 
     # replace dot with field name
     if field_name:
@@ -860,6 +864,7 @@ def xlsform_to_qgis_expression(
             expression, format(match.group(2).replace("\\", "\\\\"))
         )
 
+        # TODO @suricactus: write a test about these special numbers
         expression = re.sub(
             r"([^\[])\[:(digit|upper|lower|alpha|alnum|punct|blank|word):\]([^\]])",
             r"\1[[:\2:]]\3",
