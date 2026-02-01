@@ -139,7 +139,7 @@ class TestConverter:
                     "name": "list_list_001",
                     "layer_id": choices_layers[0]["layer_id"],
                     "geometry_type": "NoGeometry",
-                    "type": "vector",
+                    "layer_type": "vector",
                     "crs": "EPSG:4326",
                     "custom_properties": {
                         "QFieldSync/action": "copy",
@@ -170,7 +170,7 @@ class TestConverter:
                     "name": "list_list_002",
                     "layer_id": choices_layers[1]["layer_id"],
                     "geometry_type": "NoGeometry",
-                    "type": "vector",
+                    "layer_type": "vector",
                     "crs": "EPSG:4326",
                     "custom_properties": {
                         "QFieldSync/action": "copy",

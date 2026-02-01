@@ -306,6 +306,8 @@ class XLSFormConverter(QObject):
         self.layer_ids = []
         self.parent_ids = []
 
+        self.widget_registry = WidgetRegistry()
+
         self._field_compatibilities = {}
 
     def is_valid(self) -> bool:
@@ -590,7 +592,7 @@ class XLSFormConverter(QObject):
         if row["trigger"]:
             self.warning.emit("Triggers are not supported yet, skipping")
 
-        widget_type_cb = get_widget_type_callback(row)
+        widget_type_cb = self.widget_registry.get(row["type"])
 
         if not widget_type_cb:
             logger.info(self.tr(f"Unsupported xlsform type: {row['type']}, skipping!"))
@@ -598,8 +600,6 @@ class XLSFormConverter(QObject):
             self.warning.emit(
                 self.tr(f"Unsupported xlsform type: {row['type']}, skipping!")
             )
-
-            print("NOOOOOOOOOOOO", widget_type_cb)
 
             return [], [], None
 
@@ -985,27 +985,48 @@ def build_choices_layer_id(*parts: str) -> str:
     return "_".join(["list", *parts])
 
 
-registry: dict[str, Callable[[XLSFormConverter, dict[str, Any]], ParsedRow]] = {}
+class WidgetRegistry:
+    """Singleton registry for widget type callbacks."""
 
+    _instance = None
+    _registry: dict[str, Callable[[XLSFormConverter, dict[str, Any]], ParsedRow]] = {}
 
-def get_widget_type_callback(
-    row: dict[str, Any],
-) -> Callable[[XLSFormConverter, dict[str, Any]], ParsedRow] | None:
-    cb = registry.get(row["type"])
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
 
-    if not cb:
-        cb = registry.get(get_xlsform_type(row["type"]))
+        return cls._instance
 
-    return cb
+    def register(
+        self,
+        widget_type: str,
+        func: Callable[[XLSFormConverter, dict[str, Any]], ParsedRow],
+    ) -> None:
+        self._registry[widget_type] = func
+
+    def get(
+        self,
+        widget_type: str,
+        is_strict: bool = False,
+    ) -> Callable[[XLSFormConverter, dict[str, Any]], ParsedRow] | None:
+        cb = self._registry.get(widget_type)
+
+        if not cb and not is_strict:
+            cb = self._registry.get(get_xlsform_type(widget_type))
+
+        return cb
 
 
 def register_type(format_name: list[str]) -> Callable:
-    def decorator(func):
-        for name in format_name:
-            if name in registry:
-                raise ValueError(f"Widget type {name} already registered!")
+    widget_registry = WidgetRegistry()
 
-            registry[name] = func
+    def decorator(func):
+        for widget_type in format_name:
+            if widget_registry.get(widget_type, is_strict=True):
+                raise ValueError(f"Widget type {widget_type} already registered!")
+
+            widget_registry.register(widget_type, func)
+
         return func
 
     return decorator
@@ -1454,7 +1475,9 @@ def widget_begin_repeat(converter: XLSFormConverter, row: dict[str, Any]) -> Par
     )
 
 
-@register_type(["end repeat", "end_repeat"])
+@register_type(
+    ["end repeat", "end_repeat"],
+)
 def widget_end_repeat(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow:
     return ParsedRow(
         group_status=GroupStatus.END,
