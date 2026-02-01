@@ -7,6 +7,7 @@ from pathlib import Path
 RelationStrength = Literal["association", "composition"]
 ConstraintStrength = Literal["hard", "soft", "not_set"]
 CrsDef = str
+GeometryType = Literal["Point", "LineString", "Polygon", "NoGeometry"]
 
 
 class RelationFieldPairDef(TypedDict):
@@ -143,7 +144,7 @@ class FormItemDef(TypedDict):
 class WeakLayerDef(TypedDict, total=False):
     layer_id: str
     name: str
-    geometry_type: Literal["Point", "LineString", "Polygon", "NoGeometry"]
+    geometry_type: GeometryType
     type: LayerType
     crs: CrsDef
     datasource_format: str
@@ -160,7 +161,7 @@ class WeakLayerDef(TypedDict, total=False):
 class LayerDef(TypedDict):
     layer_id: str
     name: str
-    geometry_type: Literal["Point", "LineString", "Polygon", "NoGeometry"]
+    geometry_type: GeometryType
     type: LayerType
     crs: CrsDef
     datasource_format: str
@@ -185,20 +186,7 @@ class ProjectDef(TypedDict):
     layers: list[LayerDef]
     layer_tree: LayerTreeDef
 
-    layer_id: str
-    name: str
-    geometry_type: Literal["Point", "LineString", "Polygon", "NoGeometry"]
-    type: LayerType
     crs: CrsDef
-    datasource_format: str
-    fields: list[FieldDef]
-    form_config: list[FormItemDef]
-
-    is_read_only: bool
-    is_identifiable: bool
-    is_private: bool
-    is_searchable: bool
-    is_removable: bool
 
 
 class ChoicesDef(TypedDict):

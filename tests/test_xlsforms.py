@@ -396,6 +396,22 @@ class TestConverter:
         assert repeat_layer_1["fields"][1]["name"] == "uuid_parent"
         assert repeat_layer_1["fields"][2]["name"] == "field_001"
 
+    def test_xlsform_geometry(self, converter):
+        converter.survey_sheet.__iter__.return_value = [
+            generate_survey_row(
+                type="start-geoshape",
+                name="start-geoshape_001",
+            ),
+        ]
+
+        converter.convert()
+
+        assert len(converter.layers) == 1
+
+        survey_layer = converter.layers[0]
+
+        assert survey_layer["geometry_type"] == "Polygon"
+
     @pytest.fixture
     def xlsform_filename(self):
         return str(Path(__file__).parent / "data/service_rating.xlsx")

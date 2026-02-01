@@ -16,7 +16,6 @@ from qgis.PyQt.QtCore import QObject
 import re
 
 from qgis.core import (
-    Qgis,
     QgsExpression,
     QgsVectorLayer,
 )
@@ -24,6 +23,7 @@ from qgis.PyQt.QtCore import pyqtSignal, QVariant
 
 from xlsform2qgis.types import (
     ConstraintStrength,
+    GeometryType,
     FieldDef,
     LayerDef,
     RelationDef,
@@ -173,7 +173,7 @@ class ParsedRow:
         field: WeakFieldDef | None = None,
         form_field: WeakFormItemDef | None = None,
         form_container: dict[str, Any] | None = None,
-        geometry: Qgis.WkbType | None = None,
+        geometry_type: GeometryType | None = None,
         group_status: GroupStatus = GroupStatus.NONE,
         layer_status: LayerStatus = LayerStatus.NONE,
     ) -> None:
@@ -182,7 +182,7 @@ class ParsedRow:
         self.field = field or {}
         self.form_field = form_field or {}
         self.form_container = form_container or {}
-        self.geometry = geometry
+        self.geometry_type = geometry_type
         self.group_status = group_status
         self.layer_status = layer_status
 
@@ -530,6 +530,7 @@ class XLSFormConverter(QObject):
     def build_survey_form(self) -> None:
         # use the top most "layer_id" from the stack to find the respective layer definition
         max_pixels: int | None = None
+        geometry_type_by_layer_id: dict[str, GeometryType] = {}
 
         for row in self.survey_sheet:
             try:
@@ -540,7 +541,9 @@ class XLSFormConverter(QObject):
 
                 assert layer_def is not None
 
-                row_field_defs, row_form_item_defs = self._parse_form_row(row)
+                row_field_defs, row_form_item_defs, row_geometry_type = (
+                    self._parse_form_row(row)
+                )
 
                 layer_def["fields"].extend(row_field_defs)
                 layer_def["form_config"].extend(row_form_item_defs)
@@ -548,6 +551,18 @@ class XLSFormConverter(QObject):
                 # TODO find a better place for `max_pixels` logic
                 if row["type"] == "image":
                     max_pixels = self._get_field_settings_max_pixels(row, max_pixels)
+
+                if row_geometry_type:
+                    if layer_id in geometry_type_by_layer_id:
+                        logger.warning(
+                            self.tr(
+                                f"Multiple geometry types defined for layer `{layer_def['name']}`; using the first one `{row_geometry_type}`"
+                            )
+                        )
+
+                        continue
+
+                    geometry_type_by_layer_id[layer_id] = row_geometry_type
 
             except Exception as err:
                 logger.error(
@@ -563,13 +578,21 @@ class XLSFormConverter(QObject):
                 )
 
                 raise
-                continue
+
+        for layer_id, geometry_type in geometry_type_by_layer_id.items():
+            layer_def = self.find_layer(layer_id)
+
+            assert layer_def is not None
+            assert geometry_type is not None
+
+            layer_def["geometry_type"] = geometry_type
 
     def _parse_form_row(
         self, row: dict[str, Any]
-    ) -> tuple[list[FieldDef], list[FormItemDef]]:
+    ) -> tuple[list[FieldDef], list[FormItemDef], GeometryType | None]:
         fields = []
         form_items = []
+        geometry_type = None
 
         # unsupported xlsform column `trigger`
         if row["trigger"]:
@@ -586,7 +609,7 @@ class XLSFormConverter(QObject):
 
             print("NOOOOOOOOOOOO", widget_type_cb)
 
-            return [], []
+            return [], [], None
 
         # we start with some defaults that are common for all field and widget types
         field_default: WeakFieldDef = self._get_field_def(row)
@@ -634,6 +657,14 @@ class XLSFormConverter(QObject):
                 )
             )
 
+        if parsed_row.geometry_type:
+            assert not parsed_row.layer
+            assert not parsed_row.form_field
+            assert not parsed_row.form_container
+            assert not parsed_row.field
+
+            geometry_type = parsed_row.geometry_type
+
         if parsed_row.field:
             field = generate_field_def(
                 **{**field_default, **parsed_row.field},
@@ -668,7 +699,7 @@ class XLSFormConverter(QObject):
             #     )
             # )
 
-        return fields, form_items
+        return fields, form_items, geometry_type
 
     def _get_choices_values(self) -> dict[str, list[ChoicesDef]]:
         assert self.choices_sheet
@@ -740,8 +771,8 @@ class XLSFormConverter(QObject):
 
         return choices_layers
 
-    def get_project_extent(self, layer_geometry: Qgis.WkbType, crs: str):
-        if layer_geometry in (Qgis.WkbType.NoGeometry, Qgis.WkbType.Unknown):
+    def get_project_extent(self, geometry_type: GeometryType, crs: str):
+        if geometry_type in "NoGeometry":
             return [-9.88, 33.41, 40.97, 61.11]
 
         # TODO one may pass a source layer to prepopulate the geometries from, so we can compute the actual extent of those geometries
@@ -1003,7 +1034,7 @@ def widget_calculate(converter: XLSFormConverter, row: dict[str, Any]) -> Parsed
     return ParsedRow(
         field={
             "widget_type": "TextEdit",
-            **form_item,  # type: ignore
+            **form_item,
         },
         form_field={
             "is_read_only": True,
@@ -1027,7 +1058,7 @@ def widget_hidden(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow
     return ParsedRow(
         field={
             "widget_type": "Hidden",
-            **field,  # type: ignore
+            **field,
         },
         form_field={
             "is_read_only": True,
@@ -1312,19 +1343,19 @@ def widget_select_from_file(
     ]
 )
 def widget_geometry(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow:
-    geom = Qgis.WkbType.NoGeometry
+    geom: GeometryType = "NoGeometry"
 
     if row["type"] in ("geopoint", "start-geopoint"):
-        geom = Qgis.WkbType.MultiPoint
+        geom = "Point"
 
     if row["type"] in ("geotrace", "start-geotrace"):
-        geom = Qgis.WkbType.MultiLineString
+        geom = "LineString"
 
     if row["type"] in ("geoshape", "start-geoshape"):
-        geom = Qgis.WkbType.MultiPolygon
+        geom = "Polygon"
 
     return ParsedRow(
-        geometry=geom,
+        geometry_type=geom,
     )
 
 
