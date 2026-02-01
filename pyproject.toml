@@ -9,6 +9,7 @@ authors = [
 readme = "README.md"
 requires-python = ">=3.11,<4.0"
 dependencies = [
+    "json2qgis",
 ]
 
 [build-system]
@@ -30,3 +31,7 @@ xlsform2qgis = "xlsform2qgis.converter:main_cli"
 [tool.ty.src]
 include = ["src", "tests"]
 exclude = ["src/xlsform2qgis/converter_old.py", "tests/test_xlsforms_old.py"]
+
+[tool.uv.sources]
+json2qgis = { path = "../json2qgis", editable = true }
+# json2qgis = { git = "https://github.com/opengisch/json2qgis" }

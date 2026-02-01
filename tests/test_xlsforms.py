@@ -3,7 +3,7 @@ import pytest
 from unittest.mock import MagicMock
 
 from xlsform2qgis.converter import extract, XLSFormConverter
-from xlsform2qgis.converter_utils import (
+from json2qgis.generate import (
     generate_layer_def,
     generate_field_def,
     generate_form_item_def,

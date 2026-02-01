@@ -9,7 +9,6 @@ from typing import (
     Literal,
     cast,
 )
-from enum import StrEnum
 from qgis.PyQt.QtCore import QObject
 
 
@@ -22,6 +21,12 @@ from qgis.core import (
 from qgis.PyQt.QtCore import pyqtSignal, QVariant
 
 from xlsform2qgis.types import (
+    GroupStatus,
+    LayerStatus,
+)
+from xlsform2qgis.converter_utils import strip_tags
+
+from json2qgis.types import (
     ConstraintStrength,
     GeometryType,
     FieldDef,
@@ -35,15 +40,14 @@ from xlsform2qgis.types import (
     PathOrStr,
     FormItemDef,
 )
-from xlsform2qgis.converter_utils import (
-    strip_tags,
+from json2qgis.generate import (
     generate_field_def,
     generate_layer_def,
     generate_form_item_def,
 )
 
 # try:
-#     import markdown
+#     import markdown  # type: ignore
 # except ImportError:
 #     pass
 
@@ -151,18 +155,6 @@ def parse_xlsform_select_from_file_parameters(
         list_value = "label"
 
     return list_key, list_value
-
-
-class GroupStatus(StrEnum):
-    NONE = "none"
-    BEGIN = "start"
-    END = "end"
-
-
-class LayerStatus(StrEnum):
-    NONE = "none"
-    BEGIN = "start"
-    END = "end"
 
 
 class ParsedRow:
@@ -1412,7 +1404,7 @@ def widget_begin_repeat(converter: XLSFormConverter, row: dict[str, Any]) -> Par
         "layer_id": layer_id,
         "name": row["name"],
         "geometry_type": "NoGeometry",
-        "type": "vector",
+        "layer_type": "vector",
         "fields": [
             generate_field_def(
                 name="uuid",
