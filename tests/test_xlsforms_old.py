@@ -1,9 +1,12 @@
+from typing import cast
+
 from tempfile import TemporaryDirectory
 import pytest
 from pathlib import Path
 from qgis.core import (
     Qgis,
     QgsProject,
+    QgsVectorLayer,
 )
 from xlsform2qgis.converter_old import XLSFormConverter, strip_tags
 
@@ -67,12 +70,13 @@ class TestXLSFormConverter:
 
         assert len(surver_layers) == 1
 
-        surver_layer = surver_layers[0]
+        survey_layer = cast(QgsVectorLayer, surver_layers[0])
 
-        assert surver_layer.isValid()
-        assert surver_layer.geometryType() == Qgis.GeometryType.Point
+        assert survey_layer.isValid()
+        assert survey_layer.type() == Qgis.LayerType.Vector
+        assert survey_layer.geometryType() == Qgis.GeometryType.Point
 
-        fields = surver_layer.fields()
+        fields = survey_layer.fields()
 
         assert fields.names() == [
             "fid",

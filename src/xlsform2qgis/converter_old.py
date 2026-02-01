@@ -17,7 +17,7 @@ from qgis.core import (
     QgsAttributeEditorTextElement,
     QgsCoordinateReferenceSystem,
     QgsCoordinateTransform,
-    QgsCsException,
+    QgsCsException,  # type: ignore
     QgsDefaultValue,
     QgsEditFormConfig,
     QgsEditorWidgetSetup,
@@ -46,7 +46,7 @@ from qgis.core import (
 from qgis.PyQt.QtCore import QMetaType, QObject, QSize, pyqtSignal
 
 try:
-    import markdown
+    import markdown  # type: ignore[import]
 except ImportError:
     pass
 
@@ -1460,7 +1460,7 @@ class XLSFormConverter(QObject):
                 )
 
                 if "markdown" in sys.modules:
-                    assert markdown  # type: ignore
+                    assert markdown
 
                     feature_label = markdown.markdown(feature_label)
 
