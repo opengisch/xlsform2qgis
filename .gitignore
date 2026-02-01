@@ -6,6 +6,9 @@ dist/
 wheels/
 *.egg-info
 
+# mypy type check files
+.mypy_cachegit
+
 # Virtual environments
 .venv
 
