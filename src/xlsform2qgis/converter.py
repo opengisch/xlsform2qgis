@@ -665,7 +665,7 @@ class XLSFormConverter(QObject):
             form_items.append(
                 generate_form_item_def(
                     **{**form_item_default, **parsed_row.form_field},
-                    field_id=field["field_id"],
+                    field_name=field["name"],
                     parent_id=parent_id,
                     type="field",
                 )
@@ -1385,7 +1385,7 @@ def widget_begin_group(converter: XLSFormConverter, row: dict[str, Any]) -> Pars
     return ParsedRow(
         form_container={
             "item_id": container_id,
-            "name": label,
+            "label": label,
             # NOTE in the original converter, we cannot have tabs if we are on level 2
             "type": converter.form_group_type,
             "visibility_expression": visibility_expression,
@@ -1410,7 +1410,7 @@ def widget_note(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow:
     return ParsedRow(
         form_container={
             "item_id": container_id,
-            "name": label,
+            "label": label,
             "type": "group_box",
             "visibility_expression": visibility_expression,
             "is_markdown": False,
@@ -1455,7 +1455,8 @@ def widget_begin_repeat(converter: XLSFormConverter, row: dict[str, Any]) -> Par
 
     form_field: WeakFormItemDef = {
         "item_id": f"relation_{row['idx']}",
-        "name": strip_tags(row["label"]),
+        "field_name": "uuid_parent",
+        "label": strip_tags(row["label"]),
         "type": "relation",
     }
 
@@ -1465,7 +1466,7 @@ def widget_begin_repeat(converter: XLSFormConverter, row: dict[str, Any]) -> Par
         form_field=form_field,
         form_container={
             "item_id": f"item_container_{row['idx']}",
-            "name": strip_tags(row["label"]),
+            "label": strip_tags(row["label"]),
             "type": "group_box",
             "visibility_expression": xlsform_to_qgis_expression(row["relevant"]),
             "is_markdown": False,

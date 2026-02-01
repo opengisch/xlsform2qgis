@@ -231,7 +231,7 @@ class TestConverter:
         assert len(survey_layer["form_config"]) == 1
         assert survey_layer["form_config"][0] == generate_form_item_def(
             item_id=survey_layer["form_config"][0]["item_id"],
-            field_id=survey_layer["fields"][1]["field_id"],
+            field_name="field_001",
             type="field",
         )
 
@@ -281,7 +281,7 @@ class TestConverter:
         )
         assert survey_layer["form_config"][1] == generate_form_item_def(
             item_id=survey_layer["form_config"][1]["item_id"],
-            field_id=survey_layer["fields"][1]["field_id"],
+            field_name="field_001",
             parent_id="item_container_0",
             type="field",
         )
@@ -335,18 +335,18 @@ class TestConverter:
         assert len(survey_layer["form_config"]) == 3
         assert survey_layer["form_config"][0] == generate_form_item_def(
             item_id="item_container_0",
-            name="Group 001",
+            label="Group 001",
             type="group_box",
         )
         assert survey_layer["form_config"][1] == generate_form_item_def(
             item_id="item_container_1",
-            name="Group 001_001",
+            label="Group 001_001",
             parent_id="item_container_0",
             type="group_box",
         )
         assert survey_layer["form_config"][2] == generate_form_item_def(
             item_id=survey_layer["form_config"][2]["item_id"],
-            field_id=survey_layer["fields"][1]["field_id"],
+            field_name="field_001_001",
             parent_id="item_container_1",
             type="field",
         )
@@ -699,12 +699,12 @@ class TestConverter:
         assert len(survey_layer["form_config"]) == 28
         assert survey_layer["form_config"][0] == generate_form_item_def(
             item_id="item_container_0",
-            name="Introduction page",
+            label="Introduction page",
             type="group_box",
         )
         assert survey_layer["form_config"][1] == generate_form_item_def(
             item_id="item_container_1",
-            name="Welcome to our new survey. Please answer a couple of  questions.",
+            label="Welcome to our new survey. Please answer a couple of  questions.",
             parent_id="item_container_0",
             type="group_box",
         )
