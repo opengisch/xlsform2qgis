@@ -7,7 +7,7 @@ authors = [
     {name = "Ivan Ivanov",email = "ivan@opengis.ch"}
 ]
 readme = "README.md"
-requires-python = ">=3.10,<4.0"
+requires-python = ">=3.11,<4.0"
 dependencies = [
 ]
 
@@ -21,7 +21,12 @@ dev = [
     "ruff (>=0.14.6,<0.15.0)",
     "pre-commit (>=4.5.0,<5.0.0)",
     "debugpy (>=1.8.17,<2.0.0)",
+    "ty>=0.0.14",
 ]
 
 [project.scripts]
 xlsform2qgis = "xlsform2qgis.converter:main_cli"
+
+[tool.ty.src]
+include = ["src", "tests"]
+exclude = ["src/xlsform2qgis/converter_old.py", "tests/test_xlsforms_old.py"]
