@@ -50,13 +50,18 @@ from json2qgis.generate import (
 logger = logging.getLogger(__name__)
 
 
-def generate_uuid_field_def():
-    return generate_field_def(
+def generate_uuid_field_def(**kwargs: Any) -> FieldDef:
+    field_def = generate_field_def(
         name="uuid",
         type="string",
         alias="UUID",
         default="uuid(format:='WithoutBraces)",
     )
+
+    return {
+        **field_def,
+        **kwargs,
+    }
 
 
 XLS_TYPES_MAP = {

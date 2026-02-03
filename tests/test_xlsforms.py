@@ -2,7 +2,7 @@ from pathlib import Path
 import pytest
 from unittest.mock import MagicMock
 
-from xlsform2qgis.converter import extract, XLSFormConverter
+from xlsform2qgis.converter import extract, XLSFormConverter, generate_uuid_field_def
 from json2qgis.generate import (
     generate_layer_def,
     generate_field_def,
@@ -214,11 +214,8 @@ class TestConverter:
         survey_layer = converter.layers[0]
 
         assert len(survey_layer["fields"]) == 2
-        assert survey_layer["fields"][0] == generate_field_def(
+        assert survey_layer["fields"][0] == generate_uuid_field_def(
             field_id=survey_layer["fields"][0]["field_id"],
-            type="string",
-            name="uuid",
-            alias="UUID",
         )
         assert survey_layer["fields"][1] == generate_field_def(
             field_id=survey_layer["fields"][1]["field_id"],
@@ -259,11 +256,8 @@ class TestConverter:
         survey_layer = converter.layers[0]
 
         assert len(survey_layer["fields"]) == 2
-        assert survey_layer["fields"][0] == generate_field_def(
+        assert survey_layer["fields"][0] == generate_uuid_field_def(
             field_id=survey_layer["fields"][0]["field_id"],
-            type="string",
-            name="uuid",
-            alias="UUID",
         )
         assert survey_layer["fields"][1] == generate_field_def(
             field_id=survey_layer["fields"][1]["field_id"],
@@ -276,7 +270,7 @@ class TestConverter:
         assert len(survey_layer["form_config"]) == 2
         assert survey_layer["form_config"][0] == generate_form_item_def(
             item_id="item_container_0",
-            name="Group 001",
+            label="Group 001",
             type="group_box",
         )
         assert survey_layer["form_config"][1] == generate_form_item_def(
@@ -318,11 +312,8 @@ class TestConverter:
         survey_layer = converter.layers[0]
 
         assert len(survey_layer["fields"]) == 2
-        assert survey_layer["fields"][0] == generate_field_def(
+        assert survey_layer["fields"][0] == generate_uuid_field_def(
             field_id=survey_layer["fields"][0]["field_id"],
-            type="string",
-            name="uuid",
-            alias="UUID",
         )
         assert survey_layer["fields"][1] == generate_field_def(
             field_id=survey_layer["fields"][1]["field_id"],
@@ -430,11 +421,8 @@ class TestConverter:
         survey_layer, *_ = sorted_layers
 
         assert len(survey_layer["fields"]) == 21
-        assert survey_layer["fields"][0] == generate_field_def(
+        assert survey_layer["fields"][0] == generate_uuid_field_def(
             field_id=survey_layer["fields"][0]["field_id"],
-            type="string",
-            name="uuid",
-            alias="UUID",
         )
         assert survey_layer["fields"][1] == generate_field_def(
             field_id=survey_layer["fields"][1]["field_id"],
