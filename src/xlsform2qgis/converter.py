@@ -55,6 +55,15 @@ from json2qgis.generate import (
 logger = logging.getLogger(__name__)
 
 
+def generate_uuid_field_def():
+    return generate_field_def(
+        name="uuid",
+        type="string",
+        alias="UUID",
+        default="uuid(format:='WithoutBraces)",
+    )
+
+
 XLS_TYPES_MAP = {
     "integer": "integer",
     "decimal": "double",
@@ -490,8 +499,8 @@ class XLSFormConverter(QObject):
 
         _project = {
             "custom_properties": {
-                ("qfieldsync", "maximumImageWidthHeight"): 0,
-                ("qfieldsync", "initialMapMode"): "digitize",
+                "qfieldsync/maximumImageWidthHeight": 0,
+                "qfieldsync/initialMapMode": "digitize",
             },
             # TODO only if the EPSG is 3857 or any different from 4326
             "display_settings": {
@@ -506,14 +515,14 @@ class XLSFormConverter(QObject):
         self.layers.append(
             generate_layer_def(
                 layer_id=layer_id,
-                name="Survey Layer",
+                name="Survey",
                 fields=[
-                    generate_field_def(
-                        name="uuid",
-                        type="string",
-                        alias="UUID",
-                    ),
+                    generate_uuid_field_def(),
                 ],
+                custom_properties={
+                    "qfieldsync/cloud_action": "offline",
+                    "qfieldsync/action": "offline",
+                },
             )
         )
 
@@ -1427,17 +1436,15 @@ def widget_begin_repeat(converter: XLSFormConverter, row: dict[str, Any]) -> Par
         "geometry_type": "NoGeometry",
         "layer_type": "vector",
         "fields": [
-            generate_field_def(
-                name="uuid",
-                type="string",
-                alias="UUID",
-            ),
+            generate_uuid_field_def(),
             generate_field_def(
                 name="uuid_parent",
                 type="string",
                 alias="Parent UUID",
             ),
         ],
+        "is_private": True,
+        "indices": ["uuid"],
     }
 
     relation = {
