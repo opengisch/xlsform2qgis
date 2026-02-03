@@ -1,18 +1,13 @@
-from collections import defaultdict
 import logging
+import re
+
+from collections.abc import Callable, Iterable, Iterator
+from collections import defaultdict
+from dataclasses import dataclass
 from pathlib import Path
-from typing import (
-    Any,
-    Callable,
-    Iterable,
-    Iterator,
-    Literal,
-    cast,
-)
+from typing import Any, Literal, cast
 from qgis.PyQt.QtCore import QObject
 
-
-import re
 
 from qgis.core import (
     QgsExpression,
@@ -164,6 +159,12 @@ def parse_xlsform_select_from_file_parameters(
         list_value = "label"
 
     return list_key, list_value
+
+
+@dataclass
+class WidgetContext:
+    converter: "XLSFormConverter"
+    row: dict[str, Any]
 
 
 class ParsedRow:
@@ -616,7 +617,7 @@ class XLSFormConverter(QObject):
         field_default: WeakFieldDef = self._get_field_def(row)
         form_item_default: WeakFormItemDef = {}
 
-        parsed_row = widget_type_cb(self, row)
+        parsed_row = widget_type_cb(WidgetContext(self, row))
 
         # If there are not `parent_ids`, it means we are at the root level
         # the form item's `parent_id` set to `None` represents that.
@@ -998,7 +999,7 @@ class WidgetRegistry:
     """Singleton registry for widget type callbacks."""
 
     _instance = None
-    _registry: dict[str, Callable[[XLSFormConverter, dict[str, Any]], ParsedRow]] = {}
+    _registry: dict[str, Callable[[WidgetContext], ParsedRow]] = {}
 
     def __new__(cls):
         if cls._instance is None:
@@ -1009,7 +1010,7 @@ class WidgetRegistry:
     def register(
         self,
         widget_type: str,
-        func: Callable[[XLSFormConverter, dict[str, Any]], ParsedRow],
+        func: Callable[[WidgetContext], ParsedRow],
     ) -> None:
         self._registry[widget_type] = func
 
@@ -1017,7 +1018,7 @@ class WidgetRegistry:
         self,
         widget_type: str,
         is_strict: bool = False,
-    ) -> Callable[[XLSFormConverter, dict[str, Any]], ParsedRow] | None:
+    ) -> Callable[[WidgetContext], ParsedRow] | None:
         cb = self._registry.get(widget_type)
 
         if not cb and not is_strict:
@@ -1026,10 +1027,16 @@ class WidgetRegistry:
         return cb
 
 
-def register_type(format_name: list[str]) -> Callable:
+def register_type(
+    format_name: list[str],
+) -> Callable[
+    [Callable[[WidgetContext], ParsedRow]], Callable[[WidgetContext], ParsedRow]
+]:
     widget_registry = WidgetRegistry()
 
-    def decorator(func):
+    def decorator(
+        func: Callable[[WidgetContext], ParsedRow],
+    ) -> Callable[[WidgetContext], ParsedRow]:
         for widget_type in format_name:
             if widget_registry.get(widget_type, is_strict=True):
                 raise ValueError(f"Widget type {widget_type} already registered!")
@@ -1042,13 +1049,13 @@ def register_type(format_name: list[str]) -> Callable:
 
 
 @register_type(["calculate"])
-def widget_calculate(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow:
+def widget_calculate(ctx: WidgetContext) -> ParsedRow:
     form_item: WeakFieldDef = {}
 
-    if row["calculation"]:
+    if ctx.row["calculation"]:
         form_item.update(
             {
-                "default_value": xlsform_to_qgis_expression(row["calculation"]),
+                "default_value": xlsform_to_qgis_expression(ctx.row["calculation"]),
                 "set_default_value_on_update": True,
             }
         )
@@ -1066,13 +1073,13 @@ def widget_calculate(converter: XLSFormConverter, row: dict[str, Any]) -> Parsed
 
 
 @register_type(["hidden"])
-def widget_hidden(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow:
+def widget_hidden(ctx: WidgetContext) -> ParsedRow:
     field: WeakFieldDef = {}
 
-    if row["calculation"]:
+    if ctx.row["calculation"]:
         field.update(
             {
-                "default_value": xlsform_to_qgis_expression(row["calculation"]),
+                "default_value": xlsform_to_qgis_expression(ctx.row["calculation"]),
                 "set_default_value_on_update": True,
             }
         )
@@ -1090,7 +1097,7 @@ def widget_hidden(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow
 
 
 @register_type(["today"])
-def widget_today(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow:
+def widget_today(ctx: WidgetContext) -> ParsedRow:
     return ParsedRow(
         field={
             "widget_type": "Hidden",
@@ -1105,7 +1112,7 @@ def widget_today(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow:
 
 
 @register_type(["start"])
-def widget_start(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow:
+def widget_start(ctx: WidgetContext) -> ParsedRow:
     return ParsedRow(
         field={
             "widget_type": "Hidden",
@@ -1120,7 +1127,7 @@ def widget_start(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow:
 
 
 @register_type(["end"])
-def widget_end(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow:
+def widget_end(ctx: WidgetContext) -> ParsedRow:
     return ParsedRow(
         field={
             "widget_type": "Hidden",
@@ -1135,7 +1142,7 @@ def widget_end(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow:
 
 
 @register_type(["username"])
-def widget_username(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow:
+def widget_username(ctx: WidgetContext) -> ParsedRow:
     return ParsedRow(
         field={
             "widget_type": "Hidden",
@@ -1150,7 +1157,7 @@ def widget_username(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedR
 
 
 @register_type(["email"])
-def widget_email(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow:
+def widget_email(ctx: WidgetContext) -> ParsedRow:
     return ParsedRow(
         field={
             "widget_type": "Hidden",
@@ -1165,9 +1172,9 @@ def widget_email(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow:
 
 
 @register_type(["text", "barcode"])
-def widget_text(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow:
+def widget_text(ctx: WidgetContext) -> ParsedRow:
     widget_config = {}
-    if row["appearance"] == "multiline":
+    if ctx.row["appearance"] == "multiline":
         widget_config.update(
             {
                 "IsMultiline": True,
@@ -1184,7 +1191,7 @@ def widget_text(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow:
 
 
 @register_type(["acknowledge"])
-def widget_acknowledge(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow:
+def widget_acknowledge(ctx: WidgetContext) -> ParsedRow:
     return ParsedRow(
         field={
             "widget_type": "CheckBox",
@@ -1193,7 +1200,7 @@ def widget_acknowledge(converter: XLSFormConverter, row: dict[str, Any]) -> Pars
 
 
 @register_type(["integer", "decimal"])
-def widget_numeric(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow:
+def widget_numeric(ctx: WidgetContext) -> ParsedRow:
     return ParsedRow(
         field={
             "widget_type": "Range",
@@ -1202,9 +1209,9 @@ def widget_numeric(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRo
 
 
 @register_type(["range"])
-def widget_range(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow:
-    if row["parameters"]:
-        start, end, step = parse_xlsform_range_parameters(row["parameters"])
+def widget_range(ctx: WidgetContext) -> ParsedRow:
+    if ctx.row["parameters"]:
+        start, end, step = parse_xlsform_range_parameters(ctx.row["parameters"])
 
         widget_config = {
             "Min": start,
@@ -1223,15 +1230,15 @@ def widget_range(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow:
 
 
 @register_type(["date", "time", "datetime"])
-def widget_datetime(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow:
-    if row["type"] == "date":
+def widget_datetime(ctx: WidgetContext) -> ParsedRow:
+    if ctx.row["type"] == "date":
         datetime_format = "YYYY-MM-DD"
-    elif row["type"] == "time":
+    elif ctx.row["type"] == "time":
         datetime_format = "HH:mm:ss"
-    elif row["type"] == "datetime":
+    elif ctx.row["type"] == "datetime":
         datetime_format = "YYYY-MM-DD HH:mm:ss"
     else:
-        raise ValueError(f"Unsupported xlsform type for date/time: {row['type']}")
+        raise ValueError(f"Unsupported xlsform type for date/time: {ctx.row['type']}")
 
     return ParsedRow(
         field={
@@ -1248,12 +1255,12 @@ def widget_datetime(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedR
 
 
 @register_type(["image", "audio", "video", "background-audio", "file"])
-def widget_media(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow:
-    if row["type"] == "image":
+def widget_media(ctx: WidgetContext) -> ParsedRow:
+    if ctx.row["type"] == "image":
         document_viewer = 1
-    elif row["type"] in ("audio", "background-audio"):
+    elif ctx.row["type"] in ("audio", "background-audio"):
         document_viewer = 2
-    elif row["type"] == "video":
+    elif ctx.row["type"] == "video":
         document_viewer = 3
     else:
         document_viewer = 0
@@ -1279,11 +1286,9 @@ def widget_media(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow:
         "select_multiple_from_file",
     ]
 )
-def widget_select_from_file(
-    converter: XLSFormConverter, row: dict[str, Any]
-) -> ParsedRow:
+def widget_select_from_file(ctx: WidgetContext) -> ParsedRow:
     layer: WeakLayerDef = {}
-    xlsform_type, *type_details = str(row["type"]).strip().split(" ")
+    xlsform_type, *type_details = str(ctx.row["type"]).strip().split(" ")
     layer_id = build_choices_layer_id(*type_details)
 
     if xlsform_type in (
@@ -1291,7 +1296,7 @@ def widget_select_from_file(
         "select_multiple_from_file",
     ):
         list_key, list_value = parse_xlsform_select_from_file_parameters(
-            row["parameters"]
+            ctx.row["parameters"]
         )
 
         raise NotImplementedError(
@@ -1316,10 +1321,10 @@ def widget_select_from_file(
         list_key = "name"
         list_value = "label"
 
-        assert converter.find_layer(layer_id)
+        assert ctx.converter.find_layer(layer_id)
 
     filter_expressions = []
-    filter_expressions.append(xlsform_to_qgis_expression(row["choice_filter"]))
+    filter_expressions.append(xlsform_to_qgis_expression(ctx.row["choice_filter"]))
 
     if xlsform_type in ("select_multiple", "select_multiple_from_file"):
         allow_multi = True
@@ -1364,16 +1369,16 @@ def widget_select_from_file(
         "start-geoshape",
     ]
 )
-def widget_geometry(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow:
+def widget_geometry(ctx: WidgetContext) -> ParsedRow:
     geom: GeometryType = "NoGeometry"
 
-    if row["type"] in ("geopoint", "start-geopoint"):
+    if ctx.row["type"] in ("geopoint", "start-geopoint"):
         geom = "Point"
 
-    if row["type"] in ("geotrace", "start-geotrace"):
+    if ctx.row["type"] in ("geotrace", "start-geotrace"):
         geom = "LineString"
 
-    if row["type"] in ("geoshape", "start-geoshape"):
+    if ctx.row["type"] in ("geoshape", "start-geoshape"):
         geom = "Polygon"
 
     return ParsedRow(
@@ -1382,12 +1387,12 @@ def widget_geometry(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedR
 
 
 @register_type(["begin group", "begin_group"])
-def widget_begin_group(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow:
-    container_id = f"item_container_{row['idx']}"
-    label = strip_tags(row["label"])
+def widget_begin_group(ctx: WidgetContext) -> ParsedRow:
+    container_id = f"item_container_{ctx.row['idx']}"
+    label = strip_tags(ctx.row["label"])
 
-    if row["relevant"]:
-        visibility_expression = xlsform_to_qgis_expression(row["relevant"])
+    if ctx.row["relevant"]:
+        visibility_expression = xlsform_to_qgis_expression(ctx.row["relevant"])
     else:
         visibility_expression = ""
 
@@ -1396,7 +1401,7 @@ def widget_begin_group(converter: XLSFormConverter, row: dict[str, Any]) -> Pars
             "item_id": container_id,
             "label": label,
             # NOTE in the original converter, we cannot have tabs if we are on level 2
-            "type": converter.form_group_type,
+            "type": ctx.converter.form_group_type,
             "visibility_expression": visibility_expression,
         },
         group_status=GroupStatus.BEGIN,
@@ -1404,17 +1409,17 @@ def widget_begin_group(converter: XLSFormConverter, row: dict[str, Any]) -> Pars
 
 
 @register_type(["end group", "end_group"])
-def widget_end_group(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow:
+def widget_end_group(ctx: WidgetContext) -> ParsedRow:
     return ParsedRow(
         group_status=GroupStatus.END,
     )
 
 
 @register_type(["note"])
-def widget_note(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow:
-    container_id = f"item_container_{row['idx']}"
-    label = strip_tags(row["label"])
-    visibility_expression = xlsform_to_qgis_expression(row["relevant"])
+def widget_note(ctx: WidgetContext) -> ParsedRow:
+    container_id = f"item_container_{ctx.row['idx']}"
+    label = strip_tags(ctx.row["label"])
+    visibility_expression = xlsform_to_qgis_expression(ctx.row["relevant"])
 
     return ParsedRow(
         form_container={
@@ -1428,11 +1433,11 @@ def widget_note(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow:
 
 
 @register_type(["begin repeat", "begin_repeat"])
-def widget_begin_repeat(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow:
-    layer_id = f"layer_repeat_{row['idx']}"
+def widget_begin_repeat(ctx: WidgetContext) -> ParsedRow:
+    layer_id = f"layer_repeat_{ctx.row['idx']}"
     layer: WeakLayerDef = {
         "layer_id": layer_id,
-        "name": row["name"],
+        "name": ctx.row["name"],
         "geometry_type": "NoGeometry",
         "layer_type": "vector",
         "fields": [
@@ -1448,9 +1453,9 @@ def widget_begin_repeat(converter: XLSFormConverter, row: dict[str, Any]) -> Par
     }
 
     relation = {
-        "id": f"relation_{row['idx']}",
-        "name": f"relation_{row['idx']}",
-        "to_layer": converter.layers[-1]["layer_id"],
+        "id": f"relation_{ctx.row['idx']}",
+        "name": f"relation_{ctx.row['idx']}",
+        "to_layer": ctx.converter.layers[-1]["layer_id"],
         "from_layer": layer_id,
         "field_pairs": [
             {
@@ -1461,9 +1466,9 @@ def widget_begin_repeat(converter: XLSFormConverter, row: dict[str, Any]) -> Par
     }
 
     form_field: WeakFormItemDef = {
-        "item_id": f"relation_{row['idx']}",
+        "item_id": f"relation_{ctx.row['idx']}",
         "field_name": "uuid_parent",
-        "label": strip_tags(row["label"]),
+        "label": strip_tags(ctx.row["label"]),
         "type": "relation",
     }
 
@@ -1472,10 +1477,10 @@ def widget_begin_repeat(converter: XLSFormConverter, row: dict[str, Any]) -> Par
         relation=relation,
         form_field=form_field,
         form_container={
-            "item_id": f"item_container_{row['idx']}",
-            "label": strip_tags(row["label"]),
+            "item_id": f"item_container_{ctx.row['idx']}",
+            "label": strip_tags(ctx.row["label"]),
             "type": "group_box",
-            "visibility_expression": xlsform_to_qgis_expression(row["relevant"]),
+            "visibility_expression": xlsform_to_qgis_expression(ctx.row["relevant"]),
             "is_markdown": False,
         },
         group_status=GroupStatus.BEGIN,
@@ -1486,7 +1491,7 @@ def widget_begin_repeat(converter: XLSFormConverter, row: dict[str, Any]) -> Par
 @register_type(
     ["end repeat", "end_repeat"],
 )
-def widget_end_repeat(converter: XLSFormConverter, row: dict[str, Any]) -> ParsedRow:
+def widget_end_repeat(ctx: WidgetContext) -> ParsedRow:
     return ParsedRow(
         group_status=GroupStatus.END,
         layer_status=LayerStatus.END,
