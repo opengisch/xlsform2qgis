@@ -1,8 +1,8 @@
 from __future__ import annotations
-from collections.abc import Generator
 
 from dataclasses import dataclass
 from enum import StrEnum
+import re
 
 
 class TokenType(StrEnum):
@@ -54,168 +54,67 @@ PUNCTUATION: set[str] = {
 }
 
 
-def _is_ident_start(ch: str) -> bool:
-    return ch.isalpha() or ch == "_"
+LEXICON: tuple[tuple[TokenType, re.Pattern[str]], ...] = (
+    (TokenType.VARIABLE, re.compile(r"\$\{[^}]*\}")),
+    (TokenType.STRING, re.compile(r"'(?:\\.|[^'\\])*'|\"(?:\\.|[^\"\\])*\"")),
+    (TokenType.NUMBER, re.compile(r"\d+(?:\.\d+)?|\.\d+")),
+    (TokenType.CURRENT, re.compile(r"\.")),
+    (TokenType.OPERATOR, re.compile(r"!=|>=|<=|=|>|<|\+|-|\*|/")),
+    (TokenType.OPERATOR, re.compile(r"\b(?:and|or|not|div|mod)\b")),
+    (TokenType.PUNCTUATION, re.compile(r"[\(\)\[\]\{\},]")),
+    (TokenType.IDENT, re.compile(r"[A-Za-z_][A-Za-z0-9_\-:]*")),
+)
 
 
-def _is_ident_part(ch: str) -> bool:
-    return ch.isalnum() or ch in {"_", "-", ":"}
+_WHITESPACE = re.compile(r"\s+")
 
 
-def tokenize(expression: str) -> Generator[Token, None, None]:
+def _normalize_value(token_type: TokenType, raw_value: str) -> str:
+    if token_type == TokenType.VARIABLE:
+        return raw_value[2:-1]
+    if token_type == TokenType.STRING:
+        return raw_value[1:-1]
+    if token_type == TokenType.CURRENT:
+        return "."
+    return raw_value
+
+
+def tokenize(expression: str) -> list[Token]:
+    tokens: list[Token] = []
     pos: int = 0
     length: int = len(expression)
 
     while pos < length:
-        char: str = expression[pos]
-
-        if char.isspace():
-            pos += 1
-
+        whitespace_match = _WHITESPACE.match(expression, pos)
+        if whitespace_match:
+            pos = whitespace_match.end()
             continue
 
-        start = pos
+        best_type: TokenType | None = None
+        best_match: re.Match[str] | None = None
 
-        if char == "$" and pos + 1 < length and expression[pos + 1] == "{":
-            pos += 2
-            var_start = pos
-
-            while pos < length and expression[pos] != "}":
-                pos += 1
-
-            if pos >= length:
-                raise ValueError("Unterminated variable reference")
-
-            value = expression[var_start:pos]
-            pos += 1
-
-            raw_value = expression[start:pos]
-            yield Token(TokenType.VARIABLE, value, raw_value, start, pos)
-
-            continue
-
-        if char in {"'", '"'}:
-            quote = char
-            pos += 1
-            literal_start = pos
-            escaped = False
-
-            while pos < length:
-                curr = expression[pos]
-
-                if escaped:
-                    escaped = False
-                    pos += 1
-
-                    continue
-
-                if curr == "\\":
-                    escaped = True
-                    pos += 1
-
-                    continue
-
-                if curr == quote:
-                    value = expression[literal_start:pos]
-                    pos += 1
-                    raw_value = expression[start:pos]
-                    yield Token(TokenType.STRING, value, raw_value, start, pos)
-
-                    break
-
-                pos += 1
-            else:
-                raise ValueError("Unterminated string literal")
-
-            # String literal processed
-            continue
-
-        if char == ".":
-            if pos + 1 < length and expression[pos + 1].isdigit():
-                pos += 1
-
-                while pos < length and expression[pos].isdigit():
-                    pos += 1
-
-                raw_value = expression[start:pos]
-
-                yield Token(TokenType.NUMBER, raw_value, raw_value, start, pos)
-
+        for token_type, pattern in LEXICON:
+            match = pattern.match(expression, pos)
+            if not match:
                 continue
 
-            pos += 1
-            raw_value = expression[start:pos]
+            if best_match is None or match.end() > best_match.end():
+                best_match = match
+                best_type = token_type
 
-            yield Token(TokenType.CURRENT, ".", raw_value, start, pos)
+        if best_match is None or best_type is None:
+            raise ValueError(f"Unexpected character: {expression[pos]}")
 
-            continue
+        start = pos
+        end = best_match.end()
+        raw_value = expression[start:end]
 
-        if char.isdigit():
-            pos += 1
+        if best_type == TokenType.OPERATOR and raw_value not in OPERATORS:
+            raise ValueError(f"Unsupported operator: {raw_value}")
 
-            while pos < length and expression[pos].isdigit():
-                pos += 1
+        value = _normalize_value(best_type, raw_value)
+        tokens.append(Token(best_type, value, raw_value, start, end))
+        pos = end
 
-            if (
-                pos < length
-                and expression[pos] == "."
-                and pos + 1 < length
-                and expression[pos + 1].isdigit()
-            ):
-                pos += 1
-
-                while pos < length and expression[pos].isdigit():
-                    pos += 1
-
-            raw_value = expression[start:pos]
-
-            yield Token(TokenType.NUMBER, raw_value, raw_value, start, pos)
-
-            continue
-
-        if _is_ident_start(char):
-            pos += 1
-
-            while pos < length and _is_ident_part(expression[pos]):
-                pos += 1
-
-            value = expression[start:pos]
-
-            if value in OPERATORS:
-                token_type = TokenType.OPERATOR
-            else:
-                token_type = TokenType.IDENT
-
-            raw_value = expression[start:pos]
-
-            yield Token(token_type, value, raw_value, start, pos)
-
-            continue
-
-        if char in PUNCTUATION:
-            pos += 1
-            raw_value = expression[start:pos]
-
-            yield Token(TokenType.PUNCTUATION, char, raw_value, start, pos)
-
-            continue
-
-        if char in {"!", ">", "<", "=", "+", "-", "*", "/"}:
-            pos += 1
-
-            if pos < length and expression[start : pos + 1] in OPERATORS:
-                pos += 1
-
-            value = expression[start:pos]
-
-            if value not in OPERATORS:
-                raise ValueError(f"Unsupported operator: {value}")
-
-            raw_value = expression[start:pos]
-            yield Token(TokenType.OPERATOR, value, raw_value, start, pos)
-
-            continue
-
-        raise ValueError(f"Unexpected character: {char}")
-
-    yield Token(TokenType.EOF, "", "", length, length)
+    tokens.append(Token(TokenType.EOF, "", "", length, length))
+    return tokens
