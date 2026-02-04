@@ -4,7 +4,7 @@ from collections.abc import Callable
 
 from dataclasses import dataclass
 
-from xlsform2qgis.xlsform_tokenizer import Token, TokenType, tokenize
+from xlsform2qgis.expressions.tokenizer import Token, TokenType, tokenize
 
 
 class AstNode:

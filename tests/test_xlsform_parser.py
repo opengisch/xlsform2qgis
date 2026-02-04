@@ -1,6 +1,6 @@
 import pytest
 
-from xlsform2qgis.xlsform_parser import (
+from xlsform2qgis.expressions.parser import (
     BinaryOp,
     BracketList,
     Call,

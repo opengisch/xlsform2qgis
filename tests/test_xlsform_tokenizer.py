@@ -1,6 +1,6 @@
 import pytest
 
-from xlsform2qgis.xlsform_tokenizer import TokenType, tokenize
+from xlsform2qgis.expressions.tokenizer import TokenType, tokenize
 
 
 def _tokens(expression: str):
