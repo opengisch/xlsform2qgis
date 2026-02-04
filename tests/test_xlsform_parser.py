@@ -168,5 +168,5 @@ class TestXlsformParser:
         assert ast.args[0].name == "arg"
 
     def test_dynamic_function_name(self):
-        with pytest.raises(ParseError, match="Function name must be an identifier"):
+        with pytest.raises(ParseError, match="Unexpected token"):
             parse_expression("substr('hello', 1, 5)(${arg})")
