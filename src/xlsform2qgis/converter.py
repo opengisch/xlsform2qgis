@@ -622,10 +622,6 @@ class XLSFormConverter(QObject):
         form_items = []
         geometry_type = None
 
-        # unsupported xlsform column `trigger`
-        if row["trigger"]:
-            self.warning.emit("Triggers are not supported yet, skipping")
-
         widget_type_cb = self.widget_registry.get(row["type"])
 
         if not widget_type_cb:
@@ -636,6 +632,22 @@ class XLSFormConverter(QObject):
             )
 
             return [], [], None
+
+        # unsupported xlsform column `trigger`
+        if row["trigger"]:
+            self.warning.emit("Triggers are not supported yet, ignoring!")
+
+        if row["relevant"]:
+            visibility_expr = Expression(
+                row["relevant"],
+                ExpressionContext(
+                    current_field=str(row["name"]),
+                    calculate_expressions={},
+                    parser_type=ParserType.EXPRESSION,
+                ),
+            ).to_qgis()
+        else:
+            visibility_expr = None
 
         # we start with some defaults that are common for all field and widget types
         field_default: WeakFieldDef = self._get_field_def(row)
@@ -709,6 +721,7 @@ class XLSFormConverter(QObject):
             form_items.append(
                 generate_form_item_def(
                     **{
+                        "visibility_expression": visibility_expr,
                         **form_item_default,
                         **parsed_row.form_container,
                         "parent_id": parent_id,
@@ -1257,10 +1270,6 @@ def widget_geometry(ctx: WidgetContext) -> ParsedRow:
 def widget_begin_group(ctx: WidgetContext) -> ParsedRow:
     container_id = f"item_container_{ctx.row['idx']}"
     label = strip_tags(ctx.row["label"])
-    visibility_expr = Expression(
-        ctx.row["relevant"],
-        ExpressionContext(ctx.row["name"], {}, parser_type=ParserType.EXPRESSION),
-    )
 
     return ParsedRow(
         form_container={
@@ -1268,7 +1277,6 @@ def widget_begin_group(ctx: WidgetContext) -> ParsedRow:
             "label": label,
             # NOTE in the original converter, we cannot have tabs if we are on level 2
             "type": ctx.converter.form_group_type,
-            "visibility_expression": visibility_expr.to_qgis(),
         },
         group_status=GroupStatus.BEGIN,
     )
@@ -1285,17 +1293,12 @@ def widget_end_group(ctx: WidgetContext) -> ParsedRow:
 def widget_note(ctx: WidgetContext) -> ParsedRow:
     container_id = f"item_container_{ctx.row['idx']}"
     label = strip_tags(ctx.row["label"])
-    visibility_expr = Expression(
-        ctx.row["relevant"],
-        ExpressionContext(ctx.row["name"], {}, parser_type=ParserType.EXPRESSION),
-    )
 
     return ParsedRow(
         form_container={
             "item_id": container_id,
             "label": label,
             "type": "group_box",
-            "visibility_expression": visibility_expr.to_qgis(),
             "is_markdown": False,
         },
     )
@@ -1341,11 +1344,6 @@ def widget_begin_repeat(ctx: WidgetContext) -> ParsedRow:
         "type": "relation",
     }
 
-    visibility_expr = Expression(
-        ctx.row["relevant"],
-        ExpressionContext(ctx.row["name"], {}, parser_type=ParserType.EXPRESSION),
-    )
-
     return ParsedRow(
         layer=layer,
         relation=relation,
@@ -1354,7 +1352,6 @@ def widget_begin_repeat(ctx: WidgetContext) -> ParsedRow:
             "item_id": f"item_container_{ctx.row['idx']}",
             "label": strip_tags(ctx.row["label"]),
             "type": "group_box",
-            "visibility_expression": visibility_expr.to_qgis(),
             "is_markdown": False,
         },
         group_status=GroupStatus.BEGIN,
