@@ -43,6 +43,7 @@ from json2qgis.generate import (
     generate_field_def,
     generate_layer_def,
     generate_form_item_def,
+    generate_relation_def,
 )
 
 # try:
@@ -731,12 +732,11 @@ class XLSFormConverter(QObject):
             )
 
         if parsed_row.relation:
-            pass
-            # self.relations.append(
-            #     generate_relation_def(
-            #         **parsed_row.relation,
-            #     )
-            # )
+            self.relations.append(
+                generate_relation_def(
+                    **parsed_row.relation,
+                )
+            )
 
         return fields, form_items, geometry_type
 
