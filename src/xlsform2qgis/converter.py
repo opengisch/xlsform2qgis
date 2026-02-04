@@ -10,7 +10,6 @@ from qgis.PyQt.QtCore import QObject
 
 
 from qgis.core import (
-    QgsExpression,
     QgsVectorLayer,
 )
 from qgis.PyQt.QtCore import pyqtSignal, QVariant
@@ -20,6 +19,11 @@ from xlsform2qgis.types import (
     LayerStatus,
 )
 from xlsform2qgis.converter_utils import strip_tags
+from xlsform2qgis.expressions.expression import (
+    Expression as XlsFormExpression,
+    ExpressionContext,
+    ParserType,
+)
 
 from json2qgis.types import (
     ConstraintStrength,
@@ -349,16 +353,19 @@ class XLSFormConverter(QObject):
         if not sheet_row["label"]:
             return {}
 
-        # check if the `label` is a dynamic expression, or it is a static string value
-        alias_expression = XlsFormExpression(strip_tags(sheet_row["label"]).strip())
-        if alias_expression.is_dynamic():
-            return {
-                "alias_expression": alias_expression.to_qgis_label_expression(),
-            }
+        alias_expression = XlsFormExpression(
+            sheet_row["label"],
+            ExpressionContext(sheet_row["name"], {}, ParserType.TEMPLATE),
+            should_strip_tags=True,
+        )
 
+        if alias_expression.is_str():
+            return {
+                "alias": alias_expression.to_qgis(),
+            }
         else:
             return {
-                "alias": alias_expression.to_string(),
+                "alias_expression": alias_expression.to_qgis(),
             }
 
     def _get_field_def(self, sheet_row: dict[str, Any]) -> WeakFieldDef:
@@ -381,8 +388,13 @@ class XLSFormConverter(QObject):
 
         if sheet_row["constraint"]:
             constraint_str = str(sheet_row["constraint"]).strip()
-            constraint_expression = xlsform_to_qgis_expression(
-                constraint_str, sheet_row["name"]
+            constraint_expression = XlsFormExpression(
+                constraint_str,
+                ExpressionContext(
+                    current_field=field_name,
+                    calculate_expressions={},
+                    parser_type=ParserType.EXPRESSION,
+                ),
             )
 
             if constraint_expression:
@@ -413,11 +425,18 @@ class XLSFormConverter(QObject):
 
         # handle default value from either `calculation` or `default` column
         if sheet_row["calculation"]:
+            default_value_expression = XlsFormExpression(
+                sheet_row["calculation"],
+                ExpressionContext(
+                    current_field=field_name,
+                    calculate_expressions={},
+                    parser_type=ParserType.EXPRESSION,
+                ),
+            ).to_qgis()
+
             field_def.update(
                 {
-                    "default_value": xlsform_to_qgis_expression(
-                        sheet_row["calculation"]
-                    ),
+                    "default_value": default_value_expression,
                     "set_default_value_on_update": False,
                 }
             )
@@ -817,178 +836,6 @@ class XLSFormConverter(QObject):
             return max(image_max_pixels, previous_max_pixels)
 
 
-class XlsFormExpression:
-    xlsform_expression: str
-
-    def __init__(self, xlsform_expression: str | None) -> None:
-        self.xlsform_expression = xlsform_expression or ""
-
-    def to_qgis_label_expression(self) -> str:
-        label_expression = self.xlsform_expression
-
-        # ${field} to "field"
-        label_expression = label_expression.replace("'", "\\'")
-        label_expression = re.sub(
-            r"\$\{([^}]+)}", "' || \"\\1\" || '", label_expression
-        )
-        label_expression = "'{}'".format(label_expression)
-
-        label_expression_try = QgsExpression(label_expression)
-        if label_expression_try.hasParserError():
-            raise Exception(
-                QObject().tr(
-                    "Unsupported label expression {}".format(self.xlsform_expression)
-                )
-            )
-
-        return label_expression
-
-    def to_quoted_string(self) -> str:
-        escaped_str = self.xlsform_expression.replace("'", "\\'")
-        return f"'{escaped_str}'"
-
-    def to_string(self) -> str:
-        return self.xlsform_expression
-
-    def to_qgis(
-        self,
-        field_name: str | None = None,
-        use_insert: bool = False,
-        use_current_value: bool = False,
-        calculate_expressions: dict[str, str] = {},
-    ) -> str:
-        # TODO @suricactus: the xlsform_to_qgis_expression function is duplicated, we shall use this method instead everywhere
-        return xlsform_to_qgis_expression(
-            self.xlsform_expression,
-            field_name,
-            use_insert,
-            use_current_value,
-            calculate_expressions,
-        )
-
-    def is_dynamic(self) -> bool:
-        return bool(re.search(r"\$\{([^}]+)}", self.xlsform_expression))
-
-
-def xlsform_to_qgis_expression(
-    xlsform_expression: str,
-    field_name: str | None = None,
-    use_insert: bool = False,
-    use_current_value: bool = False,
-    calculate_expressions: dict[str, str] = {},
-) -> str:
-    if not xlsform_expression:
-        return ""
-
-    xlsform_expression = xlsform_expression.strip()
-
-    expression = xlsform_expression
-
-    # be tolerant of ‘’ by replacing them with ''
-    expression = expression.replace("‘", "'")
-    expression = expression.replace("’", "'")
-    expression = expression.replace("‚", "'")
-    expression = expression.replace("„", '"')
-    expression = expression.replace("“", '"')
-    expression = expression.replace("”", '"')
-
-    # replace dot with field name
-    if field_name:
-        expression = re.sub(
-            r"(^|[\s<>=\(\)\,])\.($|[\s<>=\(\)\,])",
-            r"\1${" + field_name + r"}\2",
-            expression,
-        )
-
-    # selected(${field}, value) to ${field} = value
-    expression = re.sub(
-        r"selected\s*\(\s*(\$\{[^}]+})\,([^)]+)\)", r"\1 =\2", expression
-    )
-
-    # regexp(${field}, value) to regexp_match(${field}, value)
-    match = re.search(r"regex\s*\(\s*(\$\{[^}]+})\s*\,\s*'(.+)'\s*\)\s*$", expression)
-    if match:
-        # warning: ugly hack ahead
-        expression = re.sub(
-            r"regex\s*\(\s*(\$\{[^}]+})\s*\,\s*'(.+)'\s*\)\s*$",
-            "regexp_match(\\1, '",
-            expression,
-        )
-        expression = "{}{}')".format(
-            expression, format(match.group(2).replace("\\", "\\\\"))
-        )
-
-        # TODO @suricactus: write a test about these special numbers
-        expression = re.sub(
-            r"([^\[])\[:(digit|upper|lower|alpha|alnum|punct|blank|word):\]([^\]])",
-            r"\1[[:\2:]]\3",
-            expression,
-        )
-
-    if use_insert:
-        if use_current_value:
-            # ${field} = value to current_value('field')
-            for (
-                calculate_name,
-                calculate_expression,
-            ) in calculate_expressions.items():
-                expression = re.sub(
-                    r"\$\{" + calculate_name + r"}",
-                    r"[% "
-                    + xlsform_to_qgis_expression(
-                        calculate_expression, use_current_value=True
-                    )
-                    + r" %]",
-                    expression,
-                )
-            expression = re.sub(
-                r"\$\{([^}]+)}", r"[% current_value('\1') %]", expression
-            )
-        else:
-            # ${field} = value to "field"
-            for (
-                calculate_name,
-                calculate_expression,
-            ) in calculate_expressions.items():
-                expression = re.sub(
-                    r"\$\{" + calculate_name + r"}",
-                    r"[% "
-                    + xlsform_to_qgis_expression(
-                        calculate_expression, use_current_value=False
-                    )
-                    + r" %]",
-                    expression,
-                )
-            expression = re.sub(r"\$\{([^}]+)}", r'[% "\1" %]', expression)
-    else:
-        if use_current_value:
-            # ${field} = value to current_value('field')
-            expression = re.sub(r"\$\{([^}]+)}", r"current_value('\1')", expression)
-        else:
-            # ${field} = value to "field"
-            expression = re.sub(r"\$\{([^}]+)}", r'"\1"', expression)
-
-    # today() to format_date(now()...)
-    expression = re.sub(r"today\(\)", r"format_date(now(),'yyyy-MM-dd')", expression)
-
-    # string-length(...) to length(...)
-    expression = re.sub(r"string-length\s*\(\s*([^\)]+)\)", r"length( \1 )", expression)
-
-    # selected(1, 2) to 1 = 2
-    expression = re.sub(
-        r"selected\s*\(\s*(\$\{[^}]+})\,([^)]+)\)", r"\1 = \2", expression
-    )
-
-    if not use_insert:
-        expression_try = QgsExpression(expression)
-        if expression_try.hasParserError():
-            logger.warning(
-                QObject().tr("Unsupported expression {}".format(xlsform_expression))
-            )
-
-    return expression
-
-
 def get_xlsform_type(raw_xls_type: str) -> str:
     xlsform_type, *_ = str(raw_xls_type).split(" ", 1)
     xlsform_type = xlsform_type.strip().lower()
@@ -1060,7 +907,13 @@ def widget_calculate(ctx: WidgetContext) -> ParsedRow:
     if ctx.row["calculation"]:
         form_item.update(
             {
-                "default_value": xlsform_to_qgis_expression(ctx.row["calculation"]),
+                "default_value": XlsFormExpression(
+                    ctx.row["calculation"],
+                    ExpressionContext(
+                        ctx.row["name"], {}, parser_type=ParserType.EXPRESSION
+                    ),
+                    should_strip_tags=True,
+                ).to_qgis(),
                 "set_default_value_on_update": True,
             }
         )
@@ -1082,9 +935,14 @@ def widget_hidden(ctx: WidgetContext) -> ParsedRow:
     field: WeakFieldDef = {}
 
     if ctx.row["calculation"]:
+        default_value_expr = XlsFormExpression(
+            ctx.row["calculation"],
+            ExpressionContext(ctx.row["name"], {}, parser_type=ParserType.EXPRESSION),
+        )
+
         field.update(
             {
-                "default_value": xlsform_to_qgis_expression(ctx.row["calculation"]),
+                "default_value": default_value_expr.to_qgis(),
                 "set_default_value_on_update": True,
             }
         )
@@ -1329,7 +1187,11 @@ def widget_select_from_file(ctx: WidgetContext) -> ParsedRow:
         assert ctx.converter.find_layer(layer_id)
 
     filter_expressions = []
-    filter_expressions.append(xlsform_to_qgis_expression(ctx.row["choice_filter"]))
+    choice_filter_expr = XlsFormExpression(
+        ctx.row["choice_filter"],
+        ExpressionContext(ctx.row["name"], {}, parser_type=ParserType.EXPRESSION),
+    )
+    filter_expressions.append(choice_filter_expr.to_qgis())
 
     if xlsform_type in ("select_multiple", "select_multiple_from_file"):
         allow_multi = True
@@ -1395,11 +1257,10 @@ def widget_geometry(ctx: WidgetContext) -> ParsedRow:
 def widget_begin_group(ctx: WidgetContext) -> ParsedRow:
     container_id = f"item_container_{ctx.row['idx']}"
     label = strip_tags(ctx.row["label"])
-
-    if ctx.row["relevant"]:
-        visibility_expression = xlsform_to_qgis_expression(ctx.row["relevant"])
-    else:
-        visibility_expression = ""
+    visibility_expr = XlsFormExpression(
+        ctx.row["relevant"],
+        ExpressionContext(ctx.row["name"], {}, parser_type=ParserType.EXPRESSION),
+    )
 
     return ParsedRow(
         form_container={
@@ -1407,7 +1268,7 @@ def widget_begin_group(ctx: WidgetContext) -> ParsedRow:
             "label": label,
             # NOTE in the original converter, we cannot have tabs if we are on level 2
             "type": ctx.converter.form_group_type,
-            "visibility_expression": visibility_expression,
+            "visibility_expression": visibility_expr.to_qgis(),
         },
         group_status=GroupStatus.BEGIN,
     )
@@ -1424,14 +1285,17 @@ def widget_end_group(ctx: WidgetContext) -> ParsedRow:
 def widget_note(ctx: WidgetContext) -> ParsedRow:
     container_id = f"item_container_{ctx.row['idx']}"
     label = strip_tags(ctx.row["label"])
-    visibility_expression = xlsform_to_qgis_expression(ctx.row["relevant"])
+    visibility_expr = XlsFormExpression(
+        ctx.row["relevant"],
+        ExpressionContext(ctx.row["name"], {}, parser_type=ParserType.EXPRESSION),
+    )
 
     return ParsedRow(
         form_container={
             "item_id": container_id,
             "label": label,
             "type": "group_box",
-            "visibility_expression": visibility_expression,
+            "visibility_expression": visibility_expr.to_qgis(),
             "is_markdown": False,
         },
     )
@@ -1477,6 +1341,11 @@ def widget_begin_repeat(ctx: WidgetContext) -> ParsedRow:
         "type": "relation",
     }
 
+    visibility_expr = XlsFormExpression(
+        ctx.row["relevant"],
+        ExpressionContext(ctx.row["name"], {}, parser_type=ParserType.EXPRESSION),
+    )
+
     return ParsedRow(
         layer=layer,
         relation=relation,
@@ -1485,7 +1354,7 @@ def widget_begin_repeat(ctx: WidgetContext) -> ParsedRow:
             "item_id": f"item_container_{ctx.row['idx']}",
             "label": strip_tags(ctx.row["label"]),
             "type": "group_box",
-            "visibility_expression": xlsform_to_qgis_expression(ctx.row["relevant"]),
+            "visibility_expression": visibility_expr.to_qgis(),
             "is_markdown": False,
         },
         group_status=GroupStatus.BEGIN,

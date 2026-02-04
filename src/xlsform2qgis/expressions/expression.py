@@ -320,4 +320,10 @@ class Expression:
             )
 
     def is_str(self) -> bool:
-        return isinstance(self.ast, Literal) and self.ast.type == LiteralType.STRING
+        if self.context.parser_type == ParserType.TEMPLATE:
+            return isinstance(self.ast, Template) and all(
+                isinstance(elem, Literal) and elem.type == LiteralType.STRING
+                for elem in self.ast.elements
+            )
+        else:
+            return isinstance(self.ast, Literal) and self.ast.type == LiteralType.STRING
