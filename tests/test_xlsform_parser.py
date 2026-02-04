@@ -1,6 +1,17 @@
 import pytest
 
-from xlsform2qgis.xlsform_parser import ParseError, validate_expression
+from xlsform2qgis.xlsform_parser import (
+    BinaryOp,
+    BracketList,
+    Call,
+    Identifier,
+    Literal,
+    ParseError,
+    UnaryOp,
+    Variable,
+    parse_expression,
+    validate_expression,
+)
 
 
 class TestXlsformParserBrackets:
@@ -56,13 +67,51 @@ class TestXlsformParserOperators:
             validate_expression("1 +")
 
     def test_no_operator_at_start(self):
+        validate_expression("+ 1")
         with pytest.raises(ParseError, match="Operator cannot start an expression"):
-            validate_expression("+ 1")
+            validate_expression("/ 1")
 
     def test_no_operator_after_opening(self):
+        validate_expression("(+ 1)")
+
         with pytest.raises(ParseError, match="Operator after opening bracket"):
-            validate_expression("(+ 1)")
+            validate_expression("(/ 1)")
 
     def test_no_operator_after_comma(self):
+        validate_expression("(1, +2)")
+
         with pytest.raises(ParseError, match="Operator after comma"):
-            validate_expression("(1, +2)")
+            validate_expression("(1, /2)")
+
+
+class TestXlsformParserAst:
+    def test_binary_expression_ast(self):
+        ast = parse_expression("${a} + 2")
+        assert isinstance(ast, BinaryOp)
+        assert ast.operator == "+"
+        assert isinstance(ast.left, Variable)
+        assert ast.left.name == "a"
+        assert isinstance(ast.right, Literal)
+        assert ast.right.value == "2"
+
+    def test_unary_expression_ast(self):
+        ast = parse_expression("not ${flag}")
+        assert isinstance(ast, UnaryOp)
+        assert ast.operator == "not"
+        assert isinstance(ast.operand, Variable)
+        assert ast.operand.name == "flag"
+
+    def test_function_call_ast(self):
+        ast = parse_expression("regex(${field}, '^[0-9]+$')")
+        assert isinstance(ast, Call)
+        assert isinstance(ast.callee, Identifier)
+        assert ast.callee.name == "regex"
+        assert len(ast.args) == 2
+        assert isinstance(ast.args[0], Variable)
+        assert isinstance(ast.args[1], Literal)
+
+    def test_list_literal_ast(self):
+        ast = parse_expression("[1, 2, 3]")
+        assert isinstance(ast, BracketList)
+        assert ast.open_bracket == "["
+        assert len(ast.elements) == 3
