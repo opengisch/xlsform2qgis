@@ -130,7 +130,7 @@ def test_fails_on_unsupported_operator(ctx: ExpressionContext) -> None:
         Expression("1 ^ 2", ctx)
 
 
-def test_raises_on_dynamic_function(ctx: ExpressionContext) -> None:
+def test_raises_on_non_existent_function(ctx: ExpressionContext) -> None:
     with pytest.raises(
         ParseError, match=re.escape("Unknown function `dynamic_function`")
     ):

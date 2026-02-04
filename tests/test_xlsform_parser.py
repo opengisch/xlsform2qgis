@@ -166,3 +166,7 @@ class TestXlsformParser:
         assert len(ast.args) == 1
         assert isinstance(ast.args[0], Variable)
         assert ast.args[0].name == "arg"
+
+    def test_dynamic_function_name(self):
+        with pytest.raises(ParseError, match="Function name must be an identifier"):
+            parse_expression("substr('hello', 1, 5)(${arg})")
