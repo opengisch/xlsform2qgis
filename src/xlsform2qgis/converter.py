@@ -395,7 +395,7 @@ class XLSFormConverter(QObject):
                     calculate_expressions={},
                     parser_type=ParserType.EXPRESSION,
                 ),
-            )
+            ).to_qgis()
 
             if constraint_expression:
                 constraint_expression_strength = "hard"
@@ -647,7 +647,7 @@ class XLSFormConverter(QObject):
                 ),
             ).to_qgis()
         else:
-            visibility_expr = None
+            visibility_expr = ""
 
         # we start with some defaults that are common for all field and widget types
         field_default: WeakFieldDef = self._get_field_def(row)
@@ -1201,7 +1201,7 @@ def widget_select_from_file(ctx: WidgetContext) -> ParsedRow:
 
     filter_expressions = []
     choice_filter_expr = Expression(
-        ctx.row["choice_filter"],
+        ctx.row["choice_filter"] or "",
         ExpressionContext(ctx.row["name"], {}, parser_type=ParserType.EXPRESSION),
     )
     filter_expressions.append(choice_filter_expr.to_qgis())

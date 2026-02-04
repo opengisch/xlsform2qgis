@@ -612,7 +612,7 @@ class TestConverter:
             type="boolean",
             name="employee_summary",
             alias="",
-            alias_expression="'Your company is employing  a total of ' || \"employee_total\" || ' correct ?'",
+            alias_expression='Your company is employing  a total of [% "employee_total" %] correct ?',
             widget_type="CheckBox",
             default_value=None,
             set_default_value_on_update=False,
@@ -655,7 +655,7 @@ class TestConverter:
             name="zip_code",
             alias="Zip code",
             widget_type="TextEdit",
-            constraint_expression="regexp_match(\"zip_code\", '^\\\\d{5}(-\\\\d{4})?$')",
+            constraint_expression="regexp_match(\"zip_code\", '^\\d{5}(-\\d{4})?$')",
             constraint_expression_description=None,
             constraint_expression_strength="hard",
         )
