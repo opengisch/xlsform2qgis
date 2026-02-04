@@ -147,3 +147,12 @@ class TestXlsformParser:
         assert len(ast.args) == 2
         assert isinstance(ast.args[0], Variable)
         assert isinstance(ast.args[1], Literal)
+
+    def test_hyphen_in_identifier(self):
+        ast = parse_expression("my-function(${arg})")
+        assert isinstance(ast, Call)
+        assert isinstance(ast.callee, Identifier)
+        assert ast.callee.name == "my-function"
+        assert len(ast.args) == 1
+        assert isinstance(ast.args[0], Variable)
+        assert ast.args[0].name == "arg"
