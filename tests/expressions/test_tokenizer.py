@@ -1,10 +1,18 @@
 import pytest
 
-from xlsform2qgis.expressions.tokenizer import TokenType, tokenize
+from xlsform2qgis.expressions.tokenizer import (
+    TokenType,
+    tokenize_expression,
+    tokenize_template,
+)
 
 
 def _tokens(expression: str):
-    return list(tokenize(expression))
+    return list(tokenize_expression(expression))
+
+
+def _template_tokens(expression: str):
+    return list(tokenize_template(expression))
 
 
 def _strip_eof(tokens):
@@ -184,3 +192,23 @@ class TestTokenizerErrors:
     def test_unexpected_character(self):
         with pytest.raises(ValueError, match="Unexpected character: @"):
             _tokens("@")
+
+
+class TestTemplateTokenizer:
+    def test_template_with_text_only(self):
+        tokens = _strip_eof(_template_tokens("Hello Santa, welcome!"))
+
+        assert len(tokens) == 1
+        assert tokens[0].type == TokenType.STRING
+        assert tokens[0].value == "Hello Santa, welcome!"
+
+    def test_template_with_variable_and_text(self):
+        tokens = _strip_eof(_template_tokens("Hello ${name}, welcome!"))
+
+        assert len(tokens) == 3
+        assert tokens[0].type == TokenType.STRING
+        assert tokens[0].value == "Hello "
+        assert tokens[1].type == TokenType.VARIABLE
+        assert tokens[1].value == "name"
+        assert tokens[2].type == TokenType.STRING
+        assert tokens[2].value == ", welcome!"

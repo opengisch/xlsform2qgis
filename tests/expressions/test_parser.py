@@ -6,10 +6,13 @@ from xlsform2qgis.expressions.parser import (
     Call,
     Identifier,
     Literal,
+    LiteralType,
     ParseError,
+    Template,
     UnaryOp,
     Variable,
     parse_expression,
+    parse_template,
 )
 
 
@@ -170,3 +173,27 @@ class TestXlsformParser:
     def test_dynamic_function_name(self):
         with pytest.raises(ParseError, match="Unexpected token"):
             parse_expression("substr('hello', 1, 5)(${arg})")
+
+
+class TestTemplateParser:
+    def test_template_with_text_only(self):
+        ast = parse_template("Hello Santa, welcome!")
+
+        assert isinstance(ast, Template)
+        assert len(ast.elements) == 1
+        assert isinstance(ast.elements[0], Literal)
+        assert ast.elements[0].type == LiteralType.STRING
+        assert ast.elements[0].value == "Hello Santa, welcome!"
+        assert ast.elements[0].raw_value == "Hello Santa, welcome!"
+
+    def test_template_with_variable_and_text(self):
+        ast = parse_template("Hello ${name}, welcome!")
+
+        assert isinstance(ast, Template)
+        assert len(ast.elements) == 3
+        assert isinstance(ast.elements[0], Literal)
+        assert ast.elements[0].value == "Hello "
+        assert isinstance(ast.elements[1], Variable)
+        assert ast.elements[1].name == "name"
+        assert isinstance(ast.elements[2], Literal)
+        assert ast.elements[2].value == ", welcome!"

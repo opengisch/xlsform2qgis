@@ -50,8 +50,9 @@ PUNCTUATION: set[str] = {
     ",",
 }
 
+Lexicon = tuple[tuple[TokenType, re.Pattern[str]], ...]
 
-LEXICON: tuple[tuple[TokenType, re.Pattern[str]], ...] = (
+EXPRESSION_LEXICON: Lexicon = (
     (TokenType.STRING, re.compile(r"'(?:\\.|[^'\\])*'|\"(?:\\.|[^\"\\])*\"")),
     (TokenType.VARIABLE, re.compile(r"\$\{[^}]*\}")),
     (TokenType.NUMBER, re.compile(r"\d+(?:\.\d+)?|\.\d+")),
@@ -62,35 +63,49 @@ LEXICON: tuple[tuple[TokenType, re.Pattern[str]], ...] = (
     (TokenType.IDENT, re.compile(r"[A-Za-z_][A-Za-z0-9_\-:]*")),
 )
 
+TEMPLATE_LEXICON: Lexicon = (
+    (TokenType.VARIABLE, re.compile(r"\$\{[^}]*\}")),
+    (TokenType.STRING, re.compile(r"[\s\S]*?(?=(\$\{)|$)")),
+)
+
 
 _WHITESPACE = re.compile(r"\s+")
 
 
-def _normalize_value(token_type: TokenType, raw_value: str) -> str:
+def _normalize_value(token_type: TokenType, raw_value: str, is_template: bool) -> str:
     if token_type == TokenType.VARIABLE:
         return raw_value[2:-1]
+
     if token_type == TokenType.STRING:
+        # for template strings, we want to preserve the quotes if they are part of the string
+        if is_template:
+            return raw_value
+
         return raw_value[1:-1]
+
     if token_type == TokenType.CURRENT:
         return "."
+
     return raw_value
 
 
-def tokenize(expression: str) -> list[Token]:
+def tokenize(expression: str, lexicon: Lexicon, is_template: bool) -> list[Token]:
     tokens: list[Token] = []
     pos: int = 0
     length: int = len(expression)
 
     while pos < length:
-        whitespace_match = _WHITESPACE.match(expression, pos)
-        if whitespace_match:
-            pos = whitespace_match.end()
-            continue
+        # if we are tokenizing an expression, skip whitespace
+        if not is_template:
+            whitespace_match = _WHITESPACE.match(expression, pos)
+            if whitespace_match:
+                pos = whitespace_match.end()
+                continue
 
         best_type: TokenType | None = None
         best_match: re.Match[str] | None = None
 
-        for token_type, pattern in LEXICON:
+        for token_type, pattern in lexicon:
             match = pattern.match(expression, pos)
             if not match:
                 continue
@@ -109,9 +124,18 @@ def tokenize(expression: str) -> list[Token]:
         if best_type == TokenType.OPERATOR and raw_value not in OPERATORS:
             raise ValueError(f"Unsupported operator: {raw_value}")
 
-        value = _normalize_value(best_type, raw_value)
+        value = _normalize_value(best_type, raw_value, is_template)
         tokens.append(Token(best_type, value, raw_value, start, end))
         pos = end
 
     tokens.append(Token(TokenType.EOF, "", "", length, length))
+
     return tokens
+
+
+def tokenize_expression(expression: str) -> list[Token]:
+    return tokenize(expression, EXPRESSION_LEXICON, is_template=False)
+
+
+def tokenize_template(expression: str) -> list[Token]:
+    return tokenize(expression, TEMPLATE_LEXICON, is_template=True)

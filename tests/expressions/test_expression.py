@@ -2,14 +2,31 @@ import re
 import pytest
 
 from xlsform2qgis.expressions.expression import Expression, ExpressionContext
-from xlsform2qgis.expressions.parser import ParseError
+from xlsform2qgis.expressions.parser import ParseError, ParserType
 
 
-def build_context(expressions: dict[str, str] | None = None) -> ExpressionContext:
-    context = ExpressionContext(current_field="field001", calculate_expressions={})
+def build_context(
+    expressions: dict[str, str] | None = None,
+    parser_type: ParserType = ParserType.EXPRESSION,
+) -> ExpressionContext:
+    context = ExpressionContext(
+        current_field="field001",
+        calculate_expressions={
+            "calc_field": Expression(
+                "10 + 5 + random()",
+                ExpressionContext(
+                    current_field="calc_field",
+                    calculate_expressions={},
+                    parser_type=parser_type,
+                ),
+            )
+        },
+        parser_type=parser_type,
+    )
     if expressions:
         for name, expr in expressions.items():
             context.calculate_expressions[name] = Expression(expr, context)
+
     return context
 
 
@@ -50,11 +67,6 @@ def test_regex_function_conversion(ctx) -> None:
 def test_today_function_conversion(ctx) -> None:
     expr = Expression("today()", ctx)
     assert expr.to_qgis() == "format_date(now(), 'yyyy-MM-dd')"
-
-
-def test_string_length_conversion(ctx) -> None:
-    expr = Expression("string-length(${name})", ctx)
-    assert expr.to_qgis() == 'length("name")'
 
 
 def test_true_false_literals(ctx) -> None:
@@ -132,3 +144,88 @@ def test_raises_on_non_existent_function(ctx: ExpressionContext) -> None:
         ParseError, match=re.escape("Unknown function `dynamic_function`")
     ):
         Expression("dynamic_function(${field})", ctx)
+
+
+def test_empty_expression(ctx: ExpressionContext) -> None:
+    assert Expression("", ctx).to_qgis() == ""
+    assert Expression("   ", ctx).to_qgis() == ""
+
+
+# def test_funky_quotes(ctx: ExpressionContext) -> None:
+#     assert (
+#         Expression("‘sample’ || “text” || ‚more‘ || „text“", ctx).to_qgis()
+#         == "'sample' || \"text\" || 'more' || \"text\""
+#     )
+
+
+def test_curly_quote_normalization(ctx: ExpressionContext) -> None:
+    assert Expression("'text' and 'more'", ctx).to_qgis() == "'text' and 'more'"
+
+
+def test_dot_replacement_with_field_name(ctx: ExpressionContext) -> None:
+    assert Expression(". > 5", ctx).to_qgis() == '"field001" > 5'
+    assert Expression("(.) > 5", ctx).to_qgis() == '"field001" > 5'
+    assert Expression(". = 10", ctx).to_qgis() == '"field001" = 10'
+
+
+def test_simple_field_reference(ctx: ExpressionContext) -> None:
+    assert Expression("${field}", ctx).to_qgis() == '"field"'
+    assert Expression("${my_field}", ctx).to_qgis() == '"my_field"'
+
+
+def test_string_length_conversion(ctx: ExpressionContext) -> None:
+    assert Expression("string-length(${name})", ctx).to_qgis() == 'length("name")'
+    assert Expression("string-length( ${field} )", ctx).to_qgis() == 'length("field")'
+    assert (
+        Expression("string-length( substr(${field}, 1, 10) )", ctx).to_qgis()
+        == 'length(substr("field", 1 + 1, 10))'
+    )
+
+
+def test_use_expression_with_current_value(ctx: ExpressionContext) -> None:
+    assert (
+        Expression("${field}", ctx).to_qgis(use_current=True)
+        == "current_value('field')"
+    )
+
+
+def test_use_template_without_current_value() -> None:
+    ctx = build_context(parser_type=ParserType.TEMPLATE)
+
+    assert (
+        Expression("hello ${field} world", ctx).to_qgis()
+        == r'hello [% "field" %] world'
+    )
+
+
+def test_use_template_with_current_value() -> None:
+    ctx = build_context(parser_type=ParserType.TEMPLATE)
+
+    assert (
+        Expression("Hello ${field} world", ctx).to_qgis(use_current=True)
+        == r"Hello [% current_value('field') %] world"
+    )
+
+
+def test_expressions_substitution(ctx: ExpressionContext) -> None:
+    assert Expression("${calc_field} * 2", ctx).to_qgis() == "(10 + 5 + randf()) * 2"
+
+
+def test_complex_expression(ctx: ExpressionContext) -> None:
+    assert (
+        Expression("${age} > 18 and ${name} != ''", ctx).to_qgis()
+        == '"age" > 18 and "name" != \'\''
+    )
+
+
+def test_multiple_field_references(ctx: ExpressionContext) -> None:
+    assert Expression("${field1} + ${field2}", ctx).to_qgis() == '"field1" + "field2"'
+
+
+def test_nested_selected_functions(ctx: ExpressionContext) -> None:
+    assert (
+        Expression(
+            "selected(${choice1}, 'a') and selected(${choice2}, 'b')", ctx
+        ).to_qgis()
+        == "\"choice1\" = 'a' and \"choice2\" = 'b'"
+    )

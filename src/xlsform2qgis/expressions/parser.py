@@ -5,7 +5,12 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 
-from xlsform2qgis.expressions.tokenizer import Token, TokenType, tokenize
+from xlsform2qgis.expressions.tokenizer import (
+    Token,
+    TokenType,
+    tokenize_expression,
+    tokenize_template,
+)
 
 
 class AstNode:
@@ -25,6 +30,11 @@ class LiteralType(StrEnum):
             return LiteralType.STRING
 
         raise ValueError(f"Cannot convert token type {token_type} to LiteralType")
+
+
+class ParserType(StrEnum):
+    EXPRESSION = "expression"
+    TEMPLATE = "template"
 
 
 @dataclass(frozen=True)
@@ -74,6 +84,11 @@ class Call(AstNode):
 class BracketList(AstNode):
     open_bracket: str
     close_bracket: str
+    elements: list[AstNode]
+
+
+@dataclass(frozen=True)
+class Template(AstNode):
     elements: list[AstNode]
 
 
@@ -206,16 +221,23 @@ OPENING_BRACKET = "("
 CLOSING_BRACKET = ")"
 
 
-class _Parser:
-    def __init__(self, tokens: list[Token]) -> None:
+class _ExpressionParser:
+    def __init__(self, tokens: list[Token], parser_type: ParserType) -> None:
         self._tokens = tokens
         self._pos = 0
+        self._parser_type = parser_type
 
     @classmethod
-    def from_expression(cls, expression: str) -> "_Parser":
-        tokens = list(tokenize(expression))
+    def from_expression(cls, expression: str) -> "_ExpressionParser":
+        tokens = list(tokenize_expression(expression))
         cls._validate_tokens(tokens)
-        return cls(tokens)
+        return cls(tokens, parser_type=ParserType.EXPRESSION)
+
+    @classmethod
+    def from_template(cls, expression: str) -> "_ExpressionParser":
+        tokens = list(tokenize_template(expression))
+        cls._validate_tokens(tokens)
+        return cls(tokens, parser_type=ParserType.TEMPLATE)
 
     @staticmethod
     def _validate_tokens(tokens: list[Token]) -> None:
@@ -342,11 +364,43 @@ class _Parser:
         return token
 
     def parse(self) -> AstNode:
+        if self._parser_type == ParserType.TEMPLATE:
+            return self._parse_template()
+        else:
+            return self._parse_expression()
+
+    def _parse_expression(self) -> AstNode:
         expr = self._parse_or()
         if self._current().type != TokenType.EOF:
             raise ParseError("Unexpected token", self._current().start)
         self._validate_ast(expr)
         return expr
+
+    def _parse_template(self) -> AstNode:
+        elements: list[AstNode] = []
+        while self._current().type != TokenType.EOF:
+            token = self._current()
+
+            if token.type == TokenType.STRING:
+                elements.append(
+                    Literal(token.value, token.raw_value, LiteralType.STRING)
+                )
+                self._advance()
+
+                continue
+
+            if token.type == TokenType.VARIABLE:
+                elements.append(Variable(token.value, token.raw_value))
+                self._advance()
+
+                continue
+
+            raise ParseError("Unexpected token", token.start)
+
+        if not elements:
+            return Literal("", "", LiteralType.EMPTY)
+
+        return Template(elements)
 
     def _parse_or(self) -> AstNode:
         left = self._parse_and()
@@ -503,5 +557,14 @@ def parse_expression(expression: str) -> AstNode:
     if not expression.strip():
         return Literal("", "", LiteralType.EMPTY)
 
-    parser = _Parser.from_expression(expression)
-    return parser.parse()
+    parser = _ExpressionParser.from_expression(expression)
+    return parser._parse_expression()
+
+
+def parse_template(expression: str) -> AstNode:
+    if not expression.strip():
+        return Literal("", "", LiteralType.EMPTY)
+
+    parser = _ExpressionParser.from_template(expression)
+
+    return parser._parse_template()

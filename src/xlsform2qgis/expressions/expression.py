@@ -11,7 +11,10 @@ from xlsform2qgis.expressions.parser import (
     LiteralType,
     UnaryOp,
     Variable,
+    Template,
     parse_expression,
+    parse_template,
+    ParserType,
 )
 from xlsform2qgis.converter_utils import strip_tags
 
@@ -20,6 +23,7 @@ from xlsform2qgis.converter_utils import strip_tags
 class ExpressionContext:
     current_field: str
     calculate_expressions: dict[str, "Expression"]
+    parser_type: ParserType
 
 
 @dataclass(frozen=True)
@@ -30,6 +34,8 @@ class QgisExpressionSpec:
 class ExpressionError(Exception): ...
 
 
+TEMPLATE_START = "[% "
+TEMPLATE_END = " %]"
 SUPPORTED_FUNCTIONS_BY_QGIS: dict[str, QgisExpressionSpec | None] = {
     "if": QgisExpressionSpec("if({1}, {2}, {3})"),
     "position": None,
@@ -145,14 +151,54 @@ class Expression:
             expression_str = strip_tags(expression_str)
 
         self.expression_str = expression_str
-        self.ast = parse_expression(expression_str)
         self.context = context
 
-    def to_qgis(self) -> str:
+        if self.context.parser_type == ParserType.TEMPLATE:
+            self.ast = parse_template(expression_str)
+        else:
+            self.ast = parse_expression(expression_str)
+
+    def to_qgis(self, use_current: bool = False, use_template: bool = False) -> str:
         def wrap_field(field_name: str) -> str:
             return f'"{field_name}"'
 
+        def render_tmpl(node: AstNode, seen: set[str]) -> tuple[str, int]:
+            if isinstance(node, Template):
+                elements = [render_tmpl(arg, seen)[0] for arg in node.elements]
+                joined = "".join(elements)
+
+                return joined, 100
+
+            if isinstance(node, Literal):
+                # in template context, we only have strings and empty literals, and we want to preserve the quotes if they are part of the string
+                assert node.type == LiteralType.STRING
+
+                return node.value, 100
+
+            if isinstance(node, Variable):
+                if node.name in seen:
+                    return wrap_field(node.name), 100
+
+                calculate_expr = self.context.calculate_expressions.get(node.name)
+                if calculate_expr is not None:
+                    seen.add(node.name)
+                    rendered, prec = render_tmpl(calculate_expr.ast, seen)
+                    seen.remove(node.name)
+                    return rendered, prec
+
+                if use_current:
+                    field_expr = f"current_value('{node.name}')"
+                else:
+                    field_expr = wrap_field(node.name)
+
+                return TEMPLATE_START + field_expr + TEMPLATE_END, 100
+
+            return "", 100
+
         def render(node: AstNode, seen: set[str]) -> tuple[str, int]:
+            # regular render should never encounter Template nodes, but we add an assertion here just to be safe
+            assert not isinstance(node, Template)
+
             if isinstance(node, Literal):
                 if node.type == LiteralType.EMPTY:
                     return "", 100
@@ -173,7 +219,10 @@ class Expression:
                     seen.remove(node.name)
                     return rendered, prec
 
-                return wrap_field(node.name), 100
+                if use_current:
+                    return f"current_value('{node.name}')", 100
+                else:
+                    return wrap_field(node.name), 100
 
             if isinstance(node, Current):
                 return wrap_field(self.context.current_field), 100
@@ -261,7 +310,14 @@ class Expression:
                 return "%"
             return operator
 
-        return render(self.ast, set())[0]
+        if self.context.parser_type == ParserType.TEMPLATE:
+            return render_tmpl(self.ast, set())[0]
+        elif self.context.parser_type == ParserType.EXPRESSION:
+            return render(self.ast, set())[0]
+        else:
+            raise NotImplementedError(
+                f"Unknown parser type: {self.context.parser_type}"
+            )
 
     def is_str(self) -> bool:
         return isinstance(self.ast, Literal) and self.ast.type == LiteralType.STRING
