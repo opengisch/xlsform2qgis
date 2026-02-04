@@ -52,8 +52,8 @@ PUNCTUATION: set[str] = {
 
 
 LEXICON: tuple[tuple[TokenType, re.Pattern[str]], ...] = (
-    (TokenType.VARIABLE, re.compile(r"\$\{[^}]*\}")),
     (TokenType.STRING, re.compile(r"'(?:\\.|[^'\\])*'|\"(?:\\.|[^\"\\])*\"")),
+    (TokenType.VARIABLE, re.compile(r"\$\{[^}]*\}")),
     (TokenType.NUMBER, re.compile(r"\d+(?:\.\d+)?|\.\d+")),
     (TokenType.CURRENT, re.compile(r"\.")),
     (TokenType.OPERATOR, re.compile(r"!=|>=|<=|=|>|<|\+|-|\*")),

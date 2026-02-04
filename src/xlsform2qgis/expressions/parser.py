@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from dataclasses import dataclass
+from enum import StrEnum
 
 from xlsform2qgis.expressions.tokenizer import Token, TokenType, tokenize
 
@@ -11,11 +12,25 @@ class AstNode:
     pass
 
 
+class LiteralType(StrEnum):
+    NUMBER = "number"
+    STRING = "string"
+
+    @staticmethod
+    def from_token_type(token_type: TokenType) -> "LiteralType":
+        if token_type == TokenType.NUMBER:
+            return LiteralType.NUMBER
+        if token_type == TokenType.STRING:
+            return LiteralType.STRING
+
+        raise ValueError(f"Cannot convert token type {token_type} to LiteralType")
+
+
 @dataclass(frozen=True)
 class Literal(AstNode):
     value: str
     raw_value: str
-    token_type: TokenType
+    type: LiteralType
 
 
 @dataclass(frozen=True)
@@ -397,7 +412,9 @@ class _Parser:
         token = self._current()
         if token.type == TokenType.NUMBER or token.type == TokenType.STRING:
             self._advance()
-            return Literal(token.value, token.raw_value, token.type)
+            return Literal(
+                token.value, token.raw_value, LiteralType.from_token_type(token.type)
+            )
         if token.type == TokenType.VARIABLE:
             self._advance()
             return Variable(token.value, token.raw_value)
