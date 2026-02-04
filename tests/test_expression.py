@@ -6,7 +6,7 @@ from xlsform2qgis.expressions.parser import ParseError
 
 
 def build_context(expressions: dict[str, str] | None = None) -> ExpressionContext:
-    context = ExpressionContext(calculate_expressions={}, current_field="field001")
+    context = ExpressionContext(current_field="field001", calculate_expressions={})
     if expressions:
         for name, expr in expressions.items():
             context.calculate_expressions[name] = Expression(expr, context)

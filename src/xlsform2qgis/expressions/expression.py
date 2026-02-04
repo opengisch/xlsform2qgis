@@ -17,8 +17,8 @@ from xlsform2qgis.expressions.parser import (
 
 @dataclass
 class ExpressionContext:
-    calculate_expressions: dict[str, "Expression"]
     current_field: str
+    calculate_expressions: dict[str, "Expression"]
 
 
 @dataclass(frozen=True)
