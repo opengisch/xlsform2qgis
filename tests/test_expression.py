@@ -34,32 +34,32 @@ def test_render_literals_and_variables(
     expression: str, expected: str, ctx: ExpressionContext
 ) -> None:
     expr = Expression(expression, ctx)
-    assert expr.to_qgis_expression() == expected
+    assert expr.to_qgis() == expected
 
 
 def test_selected_function_conversion(ctx) -> None:
     expr = Expression("selected(${choice}, 'value')", ctx)
-    assert expr.to_qgis_expression() == "\"choice\" = 'value'"
+    assert expr.to_qgis() == "\"choice\" = 'value'"
 
 
 def test_regex_function_conversion(ctx) -> None:
     expr = Expression("regex(${field}, '^[0-9]+$')", ctx)
-    assert expr.to_qgis_expression() == "regexp_match(\"field\", '^[0-9]+$')"
+    assert expr.to_qgis() == "regexp_match(\"field\", '^[0-9]+$')"
 
 
 def test_today_function_conversion(ctx) -> None:
     expr = Expression("today()", ctx)
-    assert expr.to_qgis_expression() == "format_date(now(), 'yyyy-MM-dd')"
+    assert expr.to_qgis() == "format_date(now(), 'yyyy-MM-dd')"
 
 
 def test_string_length_conversion(ctx) -> None:
     expr = Expression("string-length(${name})", ctx)
-    assert expr.to_qgis_expression() == 'length("name")'
+    assert expr.to_qgis() == 'length("name")'
 
 
 def test_true_false_literals(ctx) -> None:
-    assert Expression("true()", ctx).to_qgis_expression() == "true"
-    assert Expression("false()", ctx).to_qgis_expression() == "false"
+    assert Expression("true()", ctx).to_qgis() == "true"
+    assert Expression("false()", ctx).to_qgis() == "false"
 
 
 @pytest.mark.parametrize(
@@ -82,37 +82,34 @@ def test_binary_precedence_and_parentheses(
     expression: str, expected: str, ctx: ExpressionContext
 ) -> None:
     expr = Expression(expression, ctx)
-    assert expr.to_qgis_expression() == expected
+    assert expr.to_qgis() == expected
 
 
 def test_unary_operator_parentheses(ctx: ExpressionContext) -> None:
     expr = Expression("-(1 + 2)", ctx)
-    assert expr.to_qgis_expression() == "- (1 + 2)"
+    assert expr.to_qgis() == "- (1 + 2)"
 
 
 def test_nested_function_composition(ctx: ExpressionContext) -> None:
     expr = Expression("selected(${choice1}, 'a') and regex(${choice2}, 'b')", ctx)
-    assert (
-        expr.to_qgis_expression()
-        == "\"choice1\" = 'a' and regexp_match(\"choice2\", 'b')"
-    )
+    assert expr.to_qgis() == "\"choice1\" = 'a' and regexp_match(\"choice2\", 'b')"
 
 
 def test_calculate_expression_substitution() -> None:
     ctx = build_context({"calc": "10 + 5"})
     expr = Expression("${calc} * 2", ctx)
-    assert expr.to_qgis_expression() == "(10 + 5) * 2"
+    assert expr.to_qgis() == "(10 + 5) * 2"
 
 
 def test_calculate_expression_cycle_fallbacks_to_field_name() -> None:
     ctx = build_context({"calc": "${calc} + 1"})
     expr = Expression("${calc}", ctx)
-    assert expr.to_qgis_expression() == '"calc" + 1'
+    assert expr.to_qgis() == '"calc" + 1'
 
 
 def test_bracket_list_rendering(ctx: ExpressionContext) -> None:
     expr = Expression("(1, 2, 3)", ctx)
-    assert expr.to_qgis_expression() == "(1, 2, 3)"
+    assert expr.to_qgis() == "(1, 2, 3)"
 
 
 def test_complex_expression_rendering(ctx: ExpressionContext) -> None:
@@ -120,7 +117,7 @@ def test_complex_expression_rendering(ctx: ExpressionContext) -> None:
         r"""regex( substring-before(${field001}, "world"), '$\{hello')""", ctx
     )
     assert (
-        expr.to_qgis_expression()
+        expr.to_qgis()
         == """regexp_match(substr("field001", 1, strpos("field001", 'world')), '$\\{hello')"""
     )
 

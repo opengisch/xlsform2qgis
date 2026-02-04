@@ -138,7 +138,7 @@ class Expression:
         self.ast = parse_expression(expression_str)
         self.context = context
 
-    def to_qgis_expression(self) -> str:
+    def to_qgis(self) -> str:
         def wrap_field(field_name: str) -> str:
             return f'"{field_name}"'
 
