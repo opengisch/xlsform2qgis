@@ -44,13 +44,13 @@ def test_regex_function_conversion() -> None:
 def test_today_function_conversion() -> None:
     ctx = build_context()
     expr = Expression("today()", ctx)
-    assert expr.to_qgis_expression() == "format_date(now(),'yyyy-MM-dd')"
+    assert expr.to_qgis_expression() == "format_date(now(), 'yyyy-MM-dd')"
 
 
 def test_string_length_conversion() -> None:
     ctx = build_context()
     expr = Expression("string-length(${name})", ctx)
-    assert expr.to_qgis_expression() == 'length( "name" )'
+    assert expr.to_qgis_expression() == 'length("name")'
 
 
 def test_true_false_literals() -> None:
@@ -120,5 +120,5 @@ def test_complex_expression_rendering() -> None:
     )
     assert (
         expr.to_qgis_expression()
-        == """regexp_match(substring-before("field001", 'world'), '$\\{hello')"""
+        == """regexp_match(substr("field001", 1, strpos("field001", 'world')), '$\\{hello')"""
     )
