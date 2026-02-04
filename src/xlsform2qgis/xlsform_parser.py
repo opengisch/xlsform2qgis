@@ -211,6 +211,7 @@ class _Parser:
         expr = self._parse_or()
         if self._current().type != TokenType.EOF:
             raise ParseError("Unexpected token", self._current().start)
+        self._validate_ast(expr)
         return expr
 
     def _parse_or(self) -> AstNode:
@@ -318,12 +319,35 @@ class _Parser:
                 raise ParseError("Trailing comma", comma.start)
         return elements
 
+    @classmethod
+    def _validate_ast(cls, node: AstNode) -> None:
+        if isinstance(node, UnaryOp):
+            if node.operand is None:
+                raise ParseError("Invalid unary expression")
+            cls._validate_ast(node.operand)
+            return
+        if isinstance(node, BinaryOp):
+            if node.left is None or node.right is None:
+                raise ParseError("Invalid binary expression")
+            cls._validate_ast(node.left)
+            cls._validate_ast(node.right)
+            return
+        if isinstance(node, Call):
+            if node.callee is None:
+                raise ParseError("Invalid call expression")
+            cls._validate_ast(node.callee)
+            for arg in node.args:
+                cls._validate_ast(arg)
+            return
+        if isinstance(node, BracketList):
+            for element in node.elements:
+                cls._validate_ast(element)
+            return
+        if isinstance(node, (Literal, Variable, Identifier, Current)):
+            return
+        raise ParseError("Unknown AST node")
+
 
 def parse_expression(expression: str) -> AstNode:
     parser = _Parser.from_expression(expression)
     return parser.parse()
-
-
-def validate_expression(expression: str) -> list[Token]:
-    parser = _Parser.from_expression(expression)
-    return parser._tokens
