@@ -13,6 +13,7 @@ from xlsform2qgis.expressions.parser import (
     Variable,
     parse_expression,
 )
+from xlsform2qgis.converter_utils import strip_tags
 
 
 @dataclass
@@ -133,7 +134,16 @@ def format_date_codes(xlsform_format: str) -> str:
 
 
 class Expression:
-    def __init__(self, expression_str: str, context: ExpressionContext):
+    def __init__(
+        self,
+        expression_str: str,
+        context: ExpressionContext,
+        *,
+        should_strip_tags: bool = False,
+    ):
+        if should_strip_tags:
+            expression_str = strip_tags(expression_str)
+
         self.expression_str = expression_str
         self.ast = parse_expression(expression_str)
         self.context = context
@@ -252,3 +262,6 @@ class Expression:
             return operator
 
         return render(self.ast, set())[0]
+
+    def is_str(self) -> bool:
+        return isinstance(self.ast, Literal) and self.ast.type == LiteralType.STRING
