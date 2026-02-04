@@ -201,10 +201,9 @@ class Expression:
         def render_call(node: Call, seen: set[str]) -> tuple[str, int]:
             rendered_args = [render(arg, seen)[0] for arg in node.args]
 
-            if isinstance(node.callee, Identifier):
-                callee = node.callee.name
-            else:
-                callee, _ = render(node.callee, seen)
+            assert isinstance(node.callee, Identifier)
+
+            callee = node.callee.name
 
             if callee not in SUPPORTED_FUNCTIONS_BY_QGIS:
                 raise ExpressionError("Unknown xlsform function", node)

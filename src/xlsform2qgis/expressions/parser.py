@@ -471,6 +471,8 @@ class _Parser:
         if isinstance(node, Call):
             if node.callee is None:
                 raise ParseError("Invalid call expression")
+            if not isinstance(node.callee, Identifier):
+                raise ParseError("Invalid call target")
             cls._validate_ast(node.callee)
             for arg in node.args:
                 cls._validate_ast(arg)
