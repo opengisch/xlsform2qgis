@@ -20,7 +20,7 @@ from xlsform2qgis.types import (
 )
 from xlsform2qgis.converter_utils import strip_tags
 from xlsform2qgis.expressions.expression import (
-    Expression as XlsFormExpression,
+    Expression,
     ExpressionContext,
     ParserType,
 )
@@ -353,7 +353,7 @@ class XLSFormConverter(QObject):
         if not sheet_row["label"]:
             return {}
 
-        alias_expression = XlsFormExpression(
+        alias_expression = Expression(
             sheet_row["label"],
             ExpressionContext(sheet_row["name"], {}, ParserType.TEMPLATE),
             should_strip_tags=True,
@@ -388,7 +388,7 @@ class XLSFormConverter(QObject):
 
         if sheet_row["constraint"]:
             constraint_str = str(sheet_row["constraint"]).strip()
-            constraint_expression = XlsFormExpression(
+            constraint_expression = Expression(
                 constraint_str,
                 ExpressionContext(
                     current_field=field_name,
@@ -425,7 +425,7 @@ class XLSFormConverter(QObject):
 
         # handle default value from either `calculation` or `default` column
         if sheet_row["calculation"]:
-            default_value_expression = XlsFormExpression(
+            default_value_expression = Expression(
                 sheet_row["calculation"],
                 ExpressionContext(
                     current_field=field_name,
@@ -907,7 +907,7 @@ def widget_calculate(ctx: WidgetContext) -> ParsedRow:
     if ctx.row["calculation"]:
         form_item.update(
             {
-                "default_value": XlsFormExpression(
+                "default_value": Expression(
                     ctx.row["calculation"],
                     ExpressionContext(
                         ctx.row["name"], {}, parser_type=ParserType.EXPRESSION
@@ -935,7 +935,7 @@ def widget_hidden(ctx: WidgetContext) -> ParsedRow:
     field: WeakFieldDef = {}
 
     if ctx.row["calculation"]:
-        default_value_expr = XlsFormExpression(
+        default_value_expr = Expression(
             ctx.row["calculation"],
             ExpressionContext(ctx.row["name"], {}, parser_type=ParserType.EXPRESSION),
         )
@@ -1187,7 +1187,7 @@ def widget_select_from_file(ctx: WidgetContext) -> ParsedRow:
         assert ctx.converter.find_layer(layer_id)
 
     filter_expressions = []
-    choice_filter_expr = XlsFormExpression(
+    choice_filter_expr = Expression(
         ctx.row["choice_filter"],
         ExpressionContext(ctx.row["name"], {}, parser_type=ParserType.EXPRESSION),
     )
@@ -1257,7 +1257,7 @@ def widget_geometry(ctx: WidgetContext) -> ParsedRow:
 def widget_begin_group(ctx: WidgetContext) -> ParsedRow:
     container_id = f"item_container_{ctx.row['idx']}"
     label = strip_tags(ctx.row["label"])
-    visibility_expr = XlsFormExpression(
+    visibility_expr = Expression(
         ctx.row["relevant"],
         ExpressionContext(ctx.row["name"], {}, parser_type=ParserType.EXPRESSION),
     )
@@ -1285,7 +1285,7 @@ def widget_end_group(ctx: WidgetContext) -> ParsedRow:
 def widget_note(ctx: WidgetContext) -> ParsedRow:
     container_id = f"item_container_{ctx.row['idx']}"
     label = strip_tags(ctx.row["label"])
-    visibility_expr = XlsFormExpression(
+    visibility_expr = Expression(
         ctx.row["relevant"],
         ExpressionContext(ctx.row["name"], {}, parser_type=ParserType.EXPRESSION),
     )
@@ -1341,7 +1341,7 @@ def widget_begin_repeat(ctx: WidgetContext) -> ParsedRow:
         "type": "relation",
     }
 
-    visibility_expr = XlsFormExpression(
+    visibility_expr = Expression(
         ctx.row["relevant"],
         ExpressionContext(ctx.row["name"], {}, parser_type=ParserType.EXPRESSION),
     )
