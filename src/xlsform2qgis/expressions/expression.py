@@ -144,6 +144,9 @@ class Expression:
 
         def render(node: AstNode, seen: set[str]) -> tuple[str, int]:
             if isinstance(node, Literal):
+                if node.type == LiteralType.EMPTY:
+                    return "", 100
+
                 if node.type == LiteralType.STRING:
                     return f"'{node.value}'", 100
 

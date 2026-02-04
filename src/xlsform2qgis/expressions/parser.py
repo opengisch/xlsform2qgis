@@ -15,6 +15,7 @@ class AstNode:
 class LiteralType(StrEnum):
     NUMBER = "number"
     STRING = "string"
+    EMPTY = "empty"
 
     @staticmethod
     def from_token_type(token_type: TokenType) -> "LiteralType":
@@ -499,5 +500,8 @@ class _Parser:
 
 
 def parse_expression(expression: str) -> AstNode:
+    if not expression.strip():
+        return Literal("", "", LiteralType.EMPTY)
+
     parser = _Parser.from_expression(expression)
     return parser.parse()
