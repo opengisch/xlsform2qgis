@@ -148,11 +148,21 @@ class TestXlsformParser:
         assert isinstance(ast.args[0], Variable)
         assert isinstance(ast.args[1], Literal)
 
+    def test_hyphen_in_identifier_unknown_function(self):
+        with pytest.raises(ParseError, match="Unknown function `my-function`"):
+            parse_expression("my-function(${arg})")
+
+    def test_invalid_number_params(self):
+        with pytest.raises(
+            ParseError, match="Invalid number of function arguments `string-length`"
+        ):
+            parse_expression("string-length(${arg}, 'hello')")
+
     def test_hyphen_in_identifier(self):
-        ast = parse_expression("my-function(${arg})")
+        ast = parse_expression("string-length(${arg})")
         assert isinstance(ast, Call)
         assert isinstance(ast.callee, Identifier)
-        assert ast.callee.name == "my-function"
+        assert ast.callee.name == "string-length"
         assert len(ast.args) == 1
         assert isinstance(ast.args[0], Variable)
         assert ast.args[0].name == "arg"
