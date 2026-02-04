@@ -177,6 +177,7 @@ class Expression:
             if isinstance(node, BinaryOp):
                 left, left_prec = render(node.left, seen)
                 right, right_prec = render(node.right, seen)
+                operator = _binary_operator(node.operator)
                 prec = _binary_precedence(node.operator)
 
                 if left_prec < prec:
@@ -186,7 +187,7 @@ class Expression:
                 ):
                     right = f"({right})"
 
-                return f"{left} {node.operator} {right}", prec
+                return f"{left} {operator} {right}", prec
 
             if isinstance(node, Call):
                 return render_call(node, seen)
@@ -239,5 +240,12 @@ class Expression:
 
         def _non_associative_ops() -> set[str]:
             return {"-", "/", "div", "mod", "=", "!=", ">", ">=", "<", "<="}
+
+        def _binary_operator(operator: str) -> str:
+            if operator == "div":
+                return "/"
+            if operator == "mod":
+                return "%"
+            return operator
 
         return render(self.ast, set())[0]
