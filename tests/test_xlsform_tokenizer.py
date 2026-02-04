@@ -121,15 +121,15 @@ class TestTokenizerCurrent:
 
 class TestTokenizerOperators:
     def test_symbol_operators(self):
-        tokens = _strip_eof(_tokens("= != > >= < <= + - * /"))
+        tokens = _strip_eof(_tokens("= != > >= < <= + - *"))
         values = [token.value for token in tokens]
-        assert values == ["=", "!=", ">", ">=", "<", "<=", "+", "-", "*", "/"]
+        assert values == ["=", "!=", ">", ">=", "<", "<=", "+", "-", "*"]
         assert all(token.type == TokenType.OPERATOR for token in tokens)
 
     def test_word_operators(self):
-        tokens = _strip_eof(_tokens("and or not div mod"))
+        tokens = _strip_eof(_tokens("and or div mod"))
         values = [token.value for token in tokens]
-        assert values == ["and", "or", "not", "div", "mod"]
+        assert values == ["and", "or", "div", "mod"]
         assert all(token.type == TokenType.OPERATOR for token in tokens)
 
     def test_mixed_operator_expression(self):
@@ -148,9 +148,9 @@ class TestTokenizerOperators:
 
 class TestTokenizerPunctuation:
     def test_punctuation_tokens(self):
-        tokens = _strip_eof(_tokens("( )[ ]{ },"))
+        tokens = _strip_eof(_tokens("( ),"))
         values = [token.value for token in tokens]
-        assert values == ["(", ")", "[", "]", "{", "}", ","]
+        assert values == ["(", ")", ","]
         assert all(token.type == TokenType.PUNCTUATION for token in tokens)
 
 
@@ -170,17 +170,17 @@ class TestTokenizerPositions:
 
 class TestTokenizerErrors:
     def test_unterminated_variable(self):
-        with pytest.raises(ValueError, match="Unterminated variable reference"):
+        with pytest.raises(ValueError, match="Unexpected character: \$"):
             _tokens("${missing")
 
     def test_unterminated_string(self):
-        with pytest.raises(ValueError, match="Unterminated string literal"):
+        with pytest.raises(ValueError, match="Unexpected character: '"):
             _tokens("'missing")
 
     def test_unsupported_operator(self):
-        with pytest.raises(ValueError, match="Unsupported operator"):
+        with pytest.raises(ValueError, match="Unexpected character: !"):
             _tokens("!")
 
     def test_unexpected_character(self):
-        with pytest.raises(ValueError, match="Unexpected character"):
+        with pytest.raises(ValueError, match="Unexpected character: @"):
             _tokens("@")

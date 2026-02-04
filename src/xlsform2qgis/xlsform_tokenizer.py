@@ -26,30 +26,27 @@ class Token:
 
 
 OPERATORS: set[str] = {
+    # math operators, see https://docs.getodk.org/form-operators-functions/#math-operators
+    "+",
+    "-",
+    "*",
+    "div",
+    "mod",
+    # comparison operators, see https://docs.getodk.org/form-operators-functions/#comparison-operators
     "=",
     "!=",
     ">",
     ">=",
     "<",
     "<=",
-    "+",
-    "-",
-    "*",
-    "/",
+    # boolean operators, see https://docs.getodk.org/form-operators-functions/#boolean-operators
     "and",
     "or",
-    "not",
-    "div",
-    "mod",
 }
 
 PUNCTUATION: set[str] = {
     "(",
     ")",
-    "[",
-    "]",
-    "{",
-    "}",
     ",",
 }
 
@@ -59,9 +56,9 @@ LEXICON: tuple[tuple[TokenType, re.Pattern[str]], ...] = (
     (TokenType.STRING, re.compile(r"'(?:\\.|[^'\\])*'|\"(?:\\.|[^\"\\])*\"")),
     (TokenType.NUMBER, re.compile(r"\d+(?:\.\d+)?|\.\d+")),
     (TokenType.CURRENT, re.compile(r"\.")),
-    (TokenType.OPERATOR, re.compile(r"!=|>=|<=|=|>|<|\+|-|\*|/")),
-    (TokenType.OPERATOR, re.compile(r"\b(?:and|or|not|div|mod)\b")),
-    (TokenType.PUNCTUATION, re.compile(r"[\(\)\[\]\{\},]")),
+    (TokenType.OPERATOR, re.compile(r"!=|>=|<=|=|>|<|\+|-|\*")),
+    (TokenType.OPERATOR, re.compile(r"\b(?:and|or|div|mod)\b")),
+    (TokenType.PUNCTUATION, re.compile(r"[\(\),]")),
     (TokenType.IDENT, re.compile(r"[A-Za-z_][A-Za-z0-9_\-:]*")),
 )
 

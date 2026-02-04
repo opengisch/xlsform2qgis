@@ -70,8 +70,8 @@ class ParseError(Exception):
         return f"{self.message} at position {self.position}"
 
 
-_OPENING = {"(": ")", "[": "]", "{": "}"}
-_CLOSING = {")": "(", "]": "[", "}": "{"}
+OPENING_BRACKET = "("
+CLOSING_BRACKET = ")"
 
 
 class _Parser:
@@ -90,7 +90,7 @@ class _Parser:
         stack: list[Token] = []
         last_significant: Token | None = None
         total = len(tokens)
-        unary_ops = {"not", "+", "-"}
+        unary_ops = {"+", "-"}
 
         for index, token in enumerate(tokens):
             if token.type == TokenType.EOF:
@@ -98,17 +98,19 @@ class _Parser:
 
             if token.type == TokenType.PUNCTUATION:
                 value = token.value
-                if value in _OPENING:
+                if value == OPENING_BRACKET:
                     stack.append(token)
                     last_significant = token
                     continue
 
-                if value in _CLOSING:
+                if value in CLOSING_BRACKET:
                     if not stack:
                         raise ParseError("Unmatched closing bracket", token.start)
+
                     opening = stack.pop()
-                    if _OPENING[opening.value] != value:
+                    if opening.value != OPENING_BRACKET:
                         raise ParseError("Mismatched brackets", token.start)
+
                     last_significant = token
                     continue
 
@@ -121,14 +123,14 @@ class _Parser:
                         raise ParseError("Comma after operator", token.start)
                     if (
                         last_significant.type == TokenType.PUNCTUATION
-                        and last_significant.value in _OPENING
+                        and last_significant.value == OPENING_BRACKET
                     ):
                         raise ParseError("Comma after opening bracket", token.start)
                     if index + 1 < total:
                         next_token = tokens[index + 1]
                         if (
                             next_token.type == TokenType.PUNCTUATION
-                            and next_token.value in _CLOSING
+                            and next_token.value == CLOSING_BRACKET
                         ):
                             raise ParseError("Trailing comma", token.start)
                         if next_token.type == TokenType.EOF:
@@ -149,7 +151,7 @@ class _Parser:
                     raise ParseError("Consecutive operators", token.start)
                 if (
                     last_significant.type == TokenType.PUNCTUATION
-                    and last_significant.value in _OPENING
+                    and last_significant.value == OPENING_BRACKET
                 ):
                     if token.value in unary_ops:
                         last_significant = token
@@ -289,16 +291,16 @@ class _Parser:
         if token.type == TokenType.IDENT:
             self._advance()
             node: AstNode = Identifier(token.value, token.raw_value)
-            if self._match(TokenType.PUNCTUATION, "("):
-                args = self._parse_arguments(")")
+            if self._match(TokenType.PUNCTUATION, OPENING_BRACKET):
+                args = self._parse_arguments(CLOSING_BRACKET)
                 node = Call(node, args)
             return node
-        if token.type == TokenType.PUNCTUATION and token.value in {"(", "[", "{"}:
+        if token.type == TokenType.PUNCTUATION and token.value == OPENING_BRACKET:
             self._advance()
             open_bracket = token.value
-            close_bracket = _OPENING[open_bracket]
+            close_bracket = CLOSING_BRACKET
             elements = self._parse_arguments(close_bracket)
-            if open_bracket == "(" and len(elements) == 1:
+            if open_bracket == OPENING_BRACKET and len(elements) == 1:
                 return elements[0]
             return BracketList(open_bracket, close_bracket, elements)
         raise ParseError("Unexpected token", token.start)

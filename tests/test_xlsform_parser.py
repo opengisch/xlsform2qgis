@@ -32,10 +32,10 @@ class TestXlsformParser:
         assert ast.right.right.value == "3"
 
     def test_balanced_brackets(self):
-        ast = parse_expression("[1, 2, 3]")
+        ast = parse_expression("(1, 2, 3)")
         assert isinstance(ast, BracketList)
-        assert ast.open_bracket == "["
-        assert ast.close_bracket == "]"
+        assert ast.open_bracket == "("
+        assert ast.close_bracket == ")"
         assert len(ast.elements) == 3
         assert isinstance(ast.elements[0], Literal)
         assert ast.elements[0].value == "1"
@@ -43,17 +43,6 @@ class TestXlsformParser:
         assert ast.elements[1].value == "2"
         assert isinstance(ast.elements[2], Literal)
         assert ast.elements[2].value == "3"
-
-    def test_balanced_braces(self):
-        ast = parse_expression("{1, 2}")
-        assert isinstance(ast, BracketList)
-        assert ast.open_bracket == "{"
-        assert ast.close_bracket == "}"
-        assert len(ast.elements) == 2
-        assert isinstance(ast.elements[0], Literal)
-        assert ast.elements[0].value == "1"
-        assert isinstance(ast.elements[1], Literal)
-        assert ast.elements[1].value == "2"
 
     def test_comma_separated_list(self):
         ast = parse_expression("(1, 2, 3)")
@@ -75,10 +64,6 @@ class TestXlsformParser:
     def test_unclosed_opening(self):
         with pytest.raises(ParseError, match="Unclosed bracket"):
             parse_expression("(1 + 2")
-
-    def test_mismatched_brackets(self):
-        with pytest.raises(ParseError, match="Mismatched brackets"):
-            parse_expression("(]")
 
     def test_no_trailing_comma(self):
         with pytest.raises(ParseError, match="Trailing comma"):
@@ -116,16 +101,9 @@ class TestXlsformParser:
         assert isinstance(ast.operand, Literal)
         assert ast.operand.value == "1"
 
-    def test_unary_expression(self):
-        ast = parse_expression("not ${flag}")
-        assert isinstance(ast, UnaryOp)
-        assert ast.operator == "not"
-        assert isinstance(ast.operand, Variable)
-        assert ast.operand.name == "flag"
-
     def test_no_operator_at_start(self):
         with pytest.raises(ParseError, match="Operator cannot start an expression"):
-            parse_expression("/ 1")
+            parse_expression("* 1")
 
     def test_unary_operator_after_opening(self):
         ast = parse_expression("(+ 1)")
@@ -136,7 +114,7 @@ class TestXlsformParser:
 
     def test_no_operator_after_opening(self):
         with pytest.raises(ParseError, match="Operator after opening bracket"):
-            parse_expression("(/ 1)")
+            parse_expression("(* 1)")
 
     def test_no_operator_after_comma(self):
         ast = parse_expression("(1, +2)")
@@ -150,7 +128,7 @@ class TestXlsformParser:
         assert ast.elements[1].operand.value == "2"
 
         with pytest.raises(ParseError, match="Operator after comma"):
-            parse_expression("(1, /2)")
+            parse_expression("(1, *2)")
 
     def test_binary_expression(self):
         ast = parse_expression("${a} + 2")
@@ -169,9 +147,3 @@ class TestXlsformParser:
         assert len(ast.args) == 2
         assert isinstance(ast.args[0], Variable)
         assert isinstance(ast.args[1], Literal)
-
-    def test_list_literal(self):
-        ast = parse_expression("[1, 2, 3]")
-        assert isinstance(ast, BracketList)
-        assert ast.open_bracket == "["
-        assert len(ast.elements) == 3
