@@ -2,7 +2,11 @@ from pathlib import Path
 import pytest
 from unittest.mock import MagicMock
 
-from xlsform2qgis.converter import extract, XLSFormConverter, generate_uuid_field_def
+from xlsform2qgis.converter import (
+    parse_xlsform_sheets,
+    XLSFormConverter,
+    generate_uuid_field_def,
+)
 from json2qgis.generate import (
     generate_layer_def,
     generate_field_def,
@@ -408,7 +412,9 @@ class TestConverter:
         return str(Path(__file__).parent / "data/service_rating.xlsx")
 
     def test_xlsform_survey_rating_file(self, xlsform_filename: str):
-        survey_sheet, choices_sheet, settings_sheet = extract(xlsform_filename)
+        survey_sheet, choices_sheet, settings_sheet = parse_xlsform_sheets(
+            xlsform_filename
+        )
 
         converter = XLSFormConverter(survey_sheet, choices_sheet, settings_sheet)
 

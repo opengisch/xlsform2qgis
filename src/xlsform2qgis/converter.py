@@ -1,4 +1,5 @@
 import logging
+import json
 import re
 
 from collections.abc import Callable, Iterable, Iterator
@@ -269,7 +270,7 @@ class ParsedSheet:
             yield row
 
 
-def extract(
+def parse_xlsform_sheets(
     xlsform_filename: PathOrStr,
 ) -> tuple[ParsedSheet, ParsedSheet, ParsedSheet]:
     """Extract the survey, choices and settings sheets from the given XLSForm file."""
@@ -294,7 +295,7 @@ def extract(
 
 
 def xlsform_to_json(xlsform_filename: PathOrStr) -> dict[str, Any]:
-    survey_sheet, choices_sheet, settings_sheet = extract(xlsform_filename)
+    survey_sheet, choices_sheet, settings_sheet = parse_xlsform_sheets(xlsform_filename)
 
     converter = XLSFormConverter(survey_sheet, choices_sheet, settings_sheet)
 
@@ -302,15 +303,6 @@ def xlsform_to_json(xlsform_filename: PathOrStr) -> dict[str, Any]:
         raise ValueError("Invalid XLSForm file!")
 
     return converter.to_json()
-
-
-def xlsform_to_json_file(xlsform_filename: PathOrStr, json_filename: PathOrStr) -> None:
-    json_data = xlsform_to_json(xlsform_filename)
-
-    with open(json_filename, "w", encoding="utf-8") as f:
-        import json
-
-        json.dump(json_data, f, ensure_ascii=False, indent=4, sort_keys=True)
 
 
 class XLSFormConverter(QObject):
@@ -1423,3 +1415,42 @@ def widget_end_repeat(ctx: WidgetContext) -> ParsedRow:
         group_status=GroupStatus.END,
         layer_status=LayerStatus.END,
     )
+
+
+def main():
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Convert an XLSForm file to a QGIS project via JSON representation"
+    )
+    parser.add_argument(
+        "input_xlsform",
+        type=str,
+        help="Path to the input XLSForm file",
+    )
+    parser.add_argument(
+        "--output-json",
+        type=str,
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+    )
+
+    args = parser.parse_args()
+
+    output_json = xlsform_to_json(args.input_xlsform)
+
+    if args.output_json:
+        with open(args.output_json, "w") as f:
+            json.dump(output_json, f, indent=4, sort_keys=True)
+
+    if args.output_dir:
+        from json2qgis.json2qgis import ProjectCreator
+
+        creator = ProjectCreator(output_json)
+        creator.build(args.output_dir)
+
+
+if __name__ == "__main__":
+    main()
