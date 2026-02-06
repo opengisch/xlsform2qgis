@@ -542,6 +542,30 @@ class XLSFormConverter(QObject):
             # no compatibility warnings, horray!
             pass
 
+    def to_json(self) -> dict[str, Any]:
+        self.convert()
+
+        return {
+            "project": {
+                "custom_properties": {
+                    "qfieldsync/maximumImageWidthHeight": 0,
+                    "qfieldsync/initialMapMode": "digitize",
+                },
+                # TODO only if the EPSG is 3857 or any different from 4326
+                # "display_settings": {
+                #     "coordinate_type": "custom_crs",
+                #     "custom_crs": "EPSG:4326",
+                # },
+                "author": "Ivan",
+                "title": "Converted XLSForm Project",
+            },
+            "layers": self.layers,
+            "layer_tree": self.layer_tree,
+            "relations": self.relations,
+            "polymorphic_relations": [],
+            "version": "1.0",
+        }
+
     def convert(self) -> None:
         assert self.survey_sheet
         assert self.settings_sheet
