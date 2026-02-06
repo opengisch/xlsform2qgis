@@ -729,12 +729,16 @@ class XLSFormConverter(QObject):
             geometry_type = parsed_row.geometry_type
 
         if parsed_row.field:
+            assert not parsed_row.form_container
+
             field = generate_field_def(
                 **{**field_default, **parsed_row.field},
             )
             fields.append(field)
             form_items.append(
                 generate_form_item_def(
+                    visibility_expression=visibility_expr,
+                    is_label_on_top=True,
                     **{**form_item_default, **parsed_row.form_field},
                     field_name=field["name"],
                     parent_id=parent_id,
