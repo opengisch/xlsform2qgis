@@ -7,11 +7,18 @@ from xlsform2qgis.converter import (
     XLSFormConverter,
     generate_uuid_field_def,
 )
+from xlsform2qgis.expressions.expression import SUPPORTED_FUNCTIONS_BY_QGIS
 from json2qgis.generate import (
     generate_layer_def,
     generate_field_def,
     generate_form_item_def,
 )
+
+
+def format_selected_expr(field_name: str, value: str) -> str:
+    expression: str = SUPPORTED_FUNCTIONS_BY_QGIS["selected"].expression  # type: ignore
+
+    return expression.format("selected", f'"{field_name}"', f"'{value}'")
 
 
 def counter():
@@ -157,6 +164,7 @@ class TestConverter:
                                 "field_id": choices_layers[0]["fields"][0]["field_id"],
                                 "name": "name",
                                 "type": "string",
+                                "widget_type": "TextEdit",
                             },
                         ),
                         generate_field_def(
@@ -164,6 +172,7 @@ class TestConverter:
                                 "field_id": choices_layers[0]["fields"][1]["field_id"],
                                 "name": "label",
                                 "type": "string",
+                                "widget_type": "TextEdit",
                             },
                         ),
                     ],
@@ -188,6 +197,7 @@ class TestConverter:
                                 "field_id": choices_layers[1]["fields"][0]["field_id"],
                                 "name": "name",
                                 "type": "string",
+                                "widget_type": "TextEdit",
                             },
                         ),
                         generate_field_def(
@@ -195,6 +205,7 @@ class TestConverter:
                                 "field_id": choices_layers[1]["fields"][1]["field_id"],
                                 "name": "label",
                                 "type": "string",
+                                "widget_type": "TextEdit",
                             },
                         ),
                     ],
@@ -618,9 +629,9 @@ class TestConverter:
             type="boolean",
             name="employee_summary",
             alias="",
-            alias_expression='Your company is employing  a total of [% "employee_total" %] correct ?',
+            alias_expression="'Your company is employing  a total of ' || \"employee_total\" || ' correct ?'",
             widget_type="CheckBox",
-            default_value=None,
+            default_value="",
             set_default_value_on_update=False,
         )
         assert survey_layer["fields"][14] == generate_field_def(
@@ -638,7 +649,7 @@ class TestConverter:
                 "LayerName": "salutation",
                 "Value": "label",
             },
-            default_value=None,
+            default_value="",
             set_default_value_on_update=False,
         )
         assert survey_layer["fields"][15] == generate_field_def(
@@ -662,7 +673,7 @@ class TestConverter:
             alias="Zip code",
             widget_type="TextEdit",
             constraint_expression="regexp_match(\"zip_code\", '^\\d{5}(-\\d{4})?$')",
-            constraint_expression_description=None,
+            constraint_expression_description="",
             constraint_expression_strength="hard",
         )
         assert survey_layer["fields"][18] == generate_field_def(
@@ -713,12 +724,13 @@ class TestConverter:
             field_name="services",
             parent_id="item_container_0",
             type="field",
+            visibility_expression=format_selected_expr("recommend", "yes"),
         )
         assert survey_layer["form_config"][4] == generate_form_item_def(
             item_id="item_container_6",
             label="Statisfaction evaluation page",
             type="group_box",
-            visibility_expression="\"recommend\" = 'yes'",
+            visibility_expression=format_selected_expr("recommend", "yes"),
         )
         assert survey_layer["form_config"][5] == generate_form_item_def(
             item_id="item_container_7",
@@ -743,12 +755,14 @@ class TestConverter:
             field_name="support_program_rating",
             parent_id="item_container_7",
             type="field",
+            visibility_expression=format_selected_expr("services", "support_program"),
         )
         assert survey_layer["form_config"][9] == generate_form_item_def(
             item_id=survey_layer["form_config"][9]["item_id"],
             field_name="ordering_rating",
             parent_id="item_container_7",
             type="field",
+            visibility_expression=format_selected_expr("services", "ordering"),
         )
         assert survey_layer["form_config"][10] == generate_form_item_def(
             item_id=survey_layer["form_config"][10]["item_id"],
@@ -804,6 +818,7 @@ class TestConverter:
             field_name="employee_summary",
             parent_id="item_container_17",
             type="field",
+            visibility_expression='"part_employees" > 1 and "full_employees" > 1',
         )
         assert survey_layer["form_config"][19] == generate_form_item_def(
             item_id="item_container_25",
