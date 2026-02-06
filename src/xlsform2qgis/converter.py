@@ -14,7 +14,7 @@ from qgis.core import (
 )
 from qgis.PyQt.QtCore import pyqtSignal, QVariant
 
-from xlsform2qgis.types import (
+from xlsform2qgis.type_defs import (
     GroupStatus,
     LayerStatus,
 )
@@ -25,7 +25,7 @@ from xlsform2qgis.expressions.expression import (
     ParserType,
 )
 
-from json2qgis.types import (
+from json2qgis.type_defs import (
     ConstraintStrength,
     GeometryType,
     FieldDef,
