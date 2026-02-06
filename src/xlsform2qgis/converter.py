@@ -30,6 +30,7 @@ from json2qgis.type_defs import (
     GeometryType,
     FieldDef,
     LayerDef,
+    LayerTreeItemDef,
     RelationDef,
     WeakFieldDef,
     WeakFormItemDef,
@@ -291,6 +292,26 @@ def extract(
     return (survey_sheet, choices_sheet, settings_sheet)
 
 
+def xlsform_to_json(xlsform_filename: PathOrStr) -> dict[str, Any]:
+    survey_sheet, choices_sheet, settings_sheet = extract(xlsform_filename)
+
+    converter = XLSFormConverter(survey_sheet, choices_sheet, settings_sheet)
+
+    if not converter.is_valid():
+        raise ValueError("Invalid XLSForm file!")
+
+    return converter.to_json()
+
+
+def xlsform_to_json_file(xlsform_filename: PathOrStr, json_filename: PathOrStr) -> None:
+    json_data = xlsform_to_json(xlsform_filename)
+
+    with open(json_filename, "w", encoding="utf-8") as f:
+        import json
+
+        json.dump(json_data, f, ensure_ascii=False, indent=4, sort_keys=True)
+
+
 class XLSFormConverter(QObject):
     survey_sheet: ParsedSheet
     choices_sheet: ParsedSheet
@@ -298,6 +319,7 @@ class XLSFormConverter(QObject):
     _field_compatibilities: dict[str, bool]
 
     layers: list[LayerDef]
+    layer_tree: list[LayerTreeItemDef]
     relations: list[RelationDef]
     parent_ids: list[str]
     layer_ids: list[str]
@@ -322,6 +344,7 @@ class XLSFormConverter(QObject):
         self.settings_sheet = settings_sheet
 
         self.layers = []
+        self.layer_tree = []
         self.relations = []
         self.layer_ids = []
         self.parent_ids = []
@@ -523,25 +546,14 @@ class XLSFormConverter(QObject):
         assert self.settings_sheet
         assert self.choices_sheet
 
-        _project = {
-            "custom_properties": {
-                "qfieldsync/maximumImageWidthHeight": 0,
-                "qfieldsync/initialMapMode": "digitize",
-            },
-            # TODO only if the EPSG is 3857 or any different from 4326
-            "display_settings": {
-                "coordinate_type": "custom_crs",
-                "custom_crs": "EPSG:4326",
-            },
-        }
-
         self.layers.extend(self._get_choices_layers())
 
         layer_id = "survey_layer"
+        layer_name = "Survey"
         self.layers.append(
             generate_layer_def(
                 layer_id=layer_id,
-                name="Survey",
+                name=layer_name,
                 fields=[
                     generate_uuid_field_def(),
                 ],
@@ -551,10 +563,20 @@ class XLSFormConverter(QObject):
                 },
             )
         )
+        self.layer_tree.append(
+            {
+                "layer_id": layer_id,
+                "item_id": f"layer_{layer_id}",
+                "name": layer_name,
+                "parent_id": "",
+                "type": "layer",
+                "is_checked": True,
+            }
+        )
 
         self.layer_ids.append(layer_id)
 
-        return self.build_survey_form()
+        self.build_survey_form()
 
     def build_survey_form(self) -> None:
         # use the top most "layer_id" from the stack to find the respective layer definition
