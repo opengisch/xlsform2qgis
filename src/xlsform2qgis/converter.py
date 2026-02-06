@@ -1118,6 +1118,7 @@ def widget_range(ctx: WidgetContext) -> ParsedRow:
             "Min": start,
             "Max": end,
             "Step": step,
+            "Type": "Slider",
         }
     else:
         widget_config = {}
