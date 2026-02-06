@@ -153,6 +153,10 @@ class TestTokenizerOperators:
             TokenType.NUMBER,
         ]
 
+    def test_unsupported_operator(self):
+        with pytest.raises(ValueError, match="Unexpected character: /"):
+            _tokens("4 / 2 = 2")
+
 
 class TestTokenizerPunctuation:
     def test_punctuation_tokens(self):

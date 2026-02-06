@@ -121,8 +121,7 @@ def tokenize(expression: str, lexicon: Lexicon, is_template: bool) -> list[Token
         end = best_match.end()
         raw_value = expression[start:end]
 
-        if best_type == TokenType.OPERATOR and raw_value not in OPERATORS:
-            raise ValueError(f"Unsupported operator: {raw_value}")
+        assert not (best_type == TokenType.OPERATOR and raw_value not in OPERATORS)
 
         value = _normalize_value(best_type, raw_value, is_template)
         tokens.append(Token(best_type, value, raw_value, start, end))
