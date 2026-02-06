@@ -61,7 +61,8 @@ def generate_uuid_field_def(**kwargs: Any) -> FieldDef:
         name="uuid",
         type="string",
         alias="UUID",
-        default="uuid(format:='WithoutBraces)",
+        default_value="uuid(format:='WithoutBraces')",
+        widget_type="TextEdit",
     )
 
     return {
@@ -554,6 +555,7 @@ class XLSFormConverter(QObject):
             generate_layer_def(
                 layer_id=layer_id,
                 name=layer_name,
+                primary_key="uuid",
                 fields=[
                     generate_uuid_field_def(),
                 ],
@@ -798,18 +800,6 @@ class XLSFormConverter(QObject):
 
     def _get_choices_layers(self) -> list[LayerDef]:
         choices_layers: list[LayerDef] = []
-
-        fields_def = [
-            generate_field_def(
-                name="name",
-                type="string",
-            ),
-            generate_field_def(
-                name="label",
-                type="string",
-            ),
-        ]
-
         choice_values_by_list_name = self._get_choices_values()
 
         for list_name, list_choices in choice_values_by_list_name.items():
@@ -819,8 +809,21 @@ class XLSFormConverter(QObject):
                 generate_layer_def(
                     layer_id=layer_id,
                     name=layer_id,
+                    primary_key="uuid",
                     crs="EPSG:4326",
-                    fields=fields_def,
+                    fields=[
+                        generate_uuid_field_def(),
+                        generate_field_def(
+                            name="name",
+                            type="string",
+                            widget_type="TextEdit",
+                        ),
+                        generate_field_def(
+                            name="label",
+                            type="string",
+                            widget_type="TextEdit",
+                        ),
+                    ],
                     is_private=True,
                     custom_properties={
                         "QFieldSync/cloud_action": "no_action",
@@ -1332,6 +1335,7 @@ def widget_begin_repeat(ctx: WidgetContext) -> ParsedRow:
     layer: WeakLayerDef = {
         "layer_id": layer_id,
         "name": ctx.row["name"],
+        "primary_key": "uuid",
         "geometry_type": "NoGeometry",
         "layer_type": "vector",
         "fields": [
@@ -1340,6 +1344,7 @@ def widget_begin_repeat(ctx: WidgetContext) -> ParsedRow:
                 name="uuid_parent",
                 type="string",
                 alias="Parent UUID",
+                widget_type="TextEdit",
             ),
         ],
         "is_private": True,
