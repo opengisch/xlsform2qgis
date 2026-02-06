@@ -829,10 +829,8 @@ class XLSFormConverter(QObject):
                 generate_layer_def(
                     layer_id=layer_id,
                     name=layer_id,
-                    primary_key="uuid",
                     crs="EPSG:4326",
                     fields=[
-                        generate_uuid_field_def(),
                         generate_field_def(
                             name="name",
                             type="string",
