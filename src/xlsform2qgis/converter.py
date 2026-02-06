@@ -386,7 +386,7 @@ class XLSFormConverter(QObject):
 
         if alias_expression.is_str():
             return {
-                "alias": alias_expression.to_qgis(),
+                "alias": sheet_row["label"],
             }
         else:
             return {
