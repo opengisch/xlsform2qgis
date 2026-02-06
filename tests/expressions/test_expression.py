@@ -1,7 +1,11 @@
 import re
 import pytest
 
-from xlsform2qgis.expressions.expression import Expression, ExpressionContext
+from xlsform2qgis.expressions.expression import (
+    Expression,
+    ExpressionContext,
+    QgisRenderType,
+)
 from xlsform2qgis.expressions.parser import ParseError, ParserType
 
 
@@ -56,7 +60,19 @@ def test_render_literals_and_variables(
 
 def test_selected_function_conversion(ctx) -> None:
     expr = Expression("selected(${choice}, 'value')", ctx)
-    assert expr.to_qgis() == "\"choice\" = 'value'"
+    assert (
+        expr.to_qgis()
+        == """
+if(
+    /* guess whether the value is a multiple selection. Assumptions: values does not contain `,`, `}` or `{` (comma or curly brace) characters */
+    rtrim(ltrim( "choice", '{'), '}' ) = "choice",
+    /* if it is not a multiple selection, just check for equality */
+    "choice" = 'value',
+    /* if it is a multiple selection, check if the selected value is in the array of selected values */
+    array_contains( array_foreach( string_to_array( rtrim(ltrim( "choice", '{'), '}' ), ',' ), substr(@element, 2, -1) ), 'value' )
+)
+""".strip()
+    )
 
 
 def test_regex_function_conversion(ctx) -> None:
@@ -103,8 +119,18 @@ def test_unary_operator_parentheses(ctx: ExpressionContext) -> None:
 
 
 def test_nested_function_composition(ctx: ExpressionContext) -> None:
-    expr = Expression("selected(${choice1}, 'a') and regex(${choice2}, 'b')", ctx)
-    assert expr.to_qgis() == "\"choice1\" = 'a' and regexp_match(\"choice2\", 'b')"
+    expr = Expression("selected(${choice1}, 'value') and regex(${choice2}, 'b')", ctx)
+    assert (
+        expr.to_qgis()
+        == """if(
+    /* guess whether the value is a multiple selection. Assumptions: values does not contain `,`, `}` or `{` (comma or curly brace) characters */
+    rtrim(ltrim( "choice1", '{'), '}' ) = "choice1",
+    /* if it is not a multiple selection, just check for equality */
+    "choice1" = 'value',
+    /* if it is a multiple selection, check if the selected value is in the array of selected values */
+    array_contains( array_foreach( string_to_array( rtrim(ltrim( "choice1", '{'), '}' ), ',' ), substr(@element, 2, -1) ), 'value' )
+) and regexp_match(\"choice2\", 'b')"""
+    )
 
 
 def test_calculate_expression_substitution() -> None:
@@ -193,8 +219,16 @@ def test_use_template_without_current_value() -> None:
     ctx = build_context(parser_type=ParserType.TEMPLATE)
 
     assert (
-        Expression("hello ${field} world", ctx).to_qgis()
-        == r'hello [% "field" %] world'
+        Expression("hello ${field} world", ctx).to_qgis(
+            expression_type=QgisRenderType.EXPRESSION
+        )
+        == "'hello ' || \"field\" || ' world'"
+    )
+    assert (
+        Expression("hello ${field} world", ctx).to_qgis(
+            expression_type=QgisRenderType.TEMPLATE
+        )
+        == 'hello [% "field" %] world'
     )
 
 
@@ -202,7 +236,16 @@ def test_use_template_with_current_value() -> None:
     ctx = build_context(parser_type=ParserType.TEMPLATE)
 
     assert (
-        Expression("Hello ${field} world", ctx).to_qgis(use_current=True)
+        Expression("Hello ${field} world", ctx).to_qgis(
+            use_current=True, expression_type=QgisRenderType.EXPRESSION
+        )
+        == r"'Hello ' || current_value('field') || ' world'"
+    )
+
+    assert (
+        Expression("Hello ${field} world", ctx).to_qgis(
+            use_current=True, expression_type=QgisRenderType.TEMPLATE
+        )
         == r"Hello [% current_value('field') %] world"
     )
 
@@ -224,8 +267,6 @@ def test_multiple_field_references(ctx: ExpressionContext) -> None:
 
 def test_nested_selected_functions(ctx: ExpressionContext) -> None:
     assert (
-        Expression(
-            "selected(${choice1}, 'a') and selected(${choice2}, 'b')", ctx
-        ).to_qgis()
-        == "\"choice1\" = 'a' and \"choice2\" = 'b'"
+        Expression("int(number(${choice}))", ctx).to_qgis()
+        == 'to_int(to_real("choice"))'
     )
