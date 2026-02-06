@@ -46,7 +46,19 @@ SUPPORTED_FUNCTIONS_BY_QGIS: dict[str, QgisExpressionSpec | None] = {
     "if": QgisExpressionSpec("if({1}, {2}, {3})"),
     "position": None,
     "once": None,
-    "selected": QgisExpressionSpec("{1} = {2}"),
+    "selected": QgisExpressionSpec(
+        # Because we will use `str().format()`, we need to escape the curly braces in the QGIS expression by doubling them, and we also need to use {1}, {2} etc. as placeholders for the arguments
+        """
+if(
+    /* guess whether the value is a multiple selection. Assumptions: values does not contain `,`, `}}` or `{{` (comma or curly brace) characters */
+    rtrim(ltrim( {1}, '{{'), '}}' ) = {1},
+    /* if it is not a multiple selection, just check for equality */
+    {1} = {2},
+    /* if it is a multiple selection, check if the selected value is in the array of selected values */
+    array_contains( array_foreach( string_to_array( rtrim(ltrim( {1}, '{{'), '}}' ), ',' ), substr(@element, 2, -1) ), {2} )
+)
+    """.strip()
+    ),
     "selected-at": QgisExpressionSpec("coalesce(array_get({1}, {2}), '')"),
     "count-selected": QgisExpressionSpec("array_length({1})"),
     # TODO @suricactus: implement https://docs.getodk.org/form-operators-functions/#jr-choice-name
