@@ -407,8 +407,8 @@ class XLSFormConverter(QObject):
 
         self._check_xlsform_type_compatibility(xlsform_type)
 
-        constraint_expression = None
-        constraint_expression_description = None
+        constraint_expression = ""
+        constraint_expression_description = ""
         constraint_expression_strength: ConstraintStrength = "not_set"
 
         if sheet_row["constraint"]:
@@ -685,7 +685,7 @@ class XLSFormConverter(QObject):
         if self.parent_ids:
             parent_id = self.parent_ids[-1]
         else:
-            parent_id = None
+            parent_id = ""
 
         # Determine the parent id for the current form item.
         # If `group_status` is `GroupStatus.END``, then the last parent id is popped from the stack and no new element is added.
