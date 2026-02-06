@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from enum import StrEnum
 
 from xlsform2qgis.expressions.parser import (
     AstNode,
@@ -17,6 +18,11 @@ from xlsform2qgis.expressions.parser import (
     ParserType,
 )
 from xlsform2qgis.converter_utils import strip_tags
+
+
+class QgisRenderType(StrEnum):
+    TEMPLATE = "template"
+    EXPRESSION = "expression"
 
 
 @dataclass
@@ -158,11 +164,19 @@ class Expression:
         else:
             self.ast = parse_expression(expression_str)
 
-    def to_qgis(self, use_current: bool = False, use_template: bool = False) -> str:
+    def to_qgis(
+        self,
+        use_current: bool = False,
+        expression_type: QgisRenderType = QgisRenderType.EXPRESSION,
+    ) -> str:
         def wrap_field(field_name: str) -> str:
             return f'"{field_name}"'
 
         def render_tmpl(node: AstNode, seen: set[str]) -> tuple[str, int]:
+            assert expression_type != QgisRenderType.EXPRESSION, (
+                "render_tmpl should only be used for TEMPLATE expressions"
+            )
+
             if isinstance(node, Template):
                 elements = [render_tmpl(arg, seen)[0] for arg in node.elements]
                 joined = "".join(elements)
@@ -197,7 +211,8 @@ class Expression:
 
         def render(node: AstNode, seen: set[str]) -> tuple[str, int]:
             # regular render should never encounter Template nodes, but we add an assertion here just to be safe
-            assert not isinstance(node, Template)
+            if isinstance(node, Template):
+                return " || ".join(render(arg, seen)[0] for arg in node.elements), 100
 
             if isinstance(node, Literal):
                 if node.type == LiteralType.EMPTY:
@@ -310,9 +325,9 @@ class Expression:
                 return "%"
             return operator
 
-        if self.context.parser_type == ParserType.TEMPLATE:
+        if expression_type == QgisRenderType.TEMPLATE:
             return render_tmpl(self.ast, set())[0]
-        elif self.context.parser_type == ParserType.EXPRESSION:
+        elif expression_type == QgisRenderType.EXPRESSION:
             return render(self.ast, set())[0]
         else:
             raise NotImplementedError(
@@ -320,10 +335,13 @@ class Expression:
             )
 
     def is_str(self) -> bool:
-        if self.context.parser_type == ParserType.TEMPLATE:
-            return isinstance(self.ast, Template) and all(
-                isinstance(elem, Literal) and elem.type == LiteralType.STRING
-                for elem in self.ast.elements
-            )
-        else:
-            return isinstance(self.ast, Literal) and self.ast.type == LiteralType.STRING
+        if isinstance(self.ast, Template) and all(
+            isinstance(elem, Literal) and elem.type == LiteralType.STRING
+            for elem in self.ast.elements
+        ):
+            return True
+
+        if isinstance(self.ast, Literal) and self.ast.type == LiteralType.STRING:
+            return True
+
+        return False
