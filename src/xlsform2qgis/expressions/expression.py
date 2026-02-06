@@ -1,3 +1,4 @@
+from typing import assert_never
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -219,6 +220,7 @@ class Expression:
 
                 return TEMPLATE_START + field_expr + TEMPLATE_END, 100
 
+            # pragma: no cover
             return "", 100
 
         def render(node: AstNode, seen: set[str]) -> tuple[str, int]:
@@ -286,6 +288,7 @@ class Expression:
                 joined = ", ".join(elements)
                 return f"{node.open_bracket}{joined}{node.close_bracket}", 100
 
+            # pragma: no cover
             return "", 100
 
         def render_call(node: Call, seen: set[str]) -> tuple[str, int]:
@@ -295,8 +298,8 @@ class Expression:
 
             callee = node.callee.name
 
-            if callee not in SUPPORTED_FUNCTIONS_BY_QGIS:
-                raise ExpressionError("Unknown xlsform function", node)
+            # the parser should already have raised an error for unknown functions
+            assert callee in SUPPORTED_FUNCTIONS_BY_QGIS
 
             qgis_spec = SUPPORTED_FUNCTIONS_BY_QGIS[callee]
 
@@ -341,7 +344,9 @@ class Expression:
             return render_tmpl(self.ast, set())[0]
         elif expression_type == QgisRenderType.EXPRESSION:
             return render(self.ast, set())[0]
-        else:
+        else:  # pragma: no cover
+            assert_never(expression_type)
+
             raise NotImplementedError(
                 f"Unknown parser type: {self.context.parser_type}"
             )
