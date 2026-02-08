@@ -1406,14 +1406,13 @@ def widget_begin_repeat(ctx: WidgetContext) -> ParsedRow:
             ),
         ],
         "is_private": True,
-        "indices": ["uuid"],
     }
 
     relation = {
-        "id": f"relation_{ctx.row['idx']}",
+        "relation_id": f"relation_{ctx.row['idx']}",
         "name": f"relation_{ctx.row['idx']}",
-        "to_layer": ctx.converter.layers[-1]["layer_id"],
-        "from_layer": layer_id,
+        "to_layer_id": ctx.converter.layers[-1]["layer_id"],
+        "from_layer_id": layer_id,
         "field_pairs": [
             {
                 "to_field": "uuid",
