@@ -197,7 +197,7 @@ class ParsedRow:
         self.field = field or {}
         self.form_field = form_field or {}
         self.form_container = form_container or {}
-        self.geometry_type = geometry_type
+        self.geometry_type: GeometryType | None = geometry_type
         self.group_status = group_status
         self.layer_status = layer_status
 
