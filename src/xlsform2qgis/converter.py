@@ -323,7 +323,7 @@ class XLSFormConverter(QObject):
     layers: list[LayerDef]
     layer_tree: list[LayerTreeItemDef]
     relations: list[RelationDef]
-    parent_ids: list[str]
+    parent_ids: list[str | None]
     layer_ids: list[str]
 
     form_group_type: Literal["group_box", "tab"] = "group_box"
@@ -359,7 +359,7 @@ class XLSFormConverter(QObject):
         self.layer_tree = []
         self.relations = []
         self.layer_ids = []
-        self.parent_ids = []
+        self.parent_ids = [None]
 
         self.widget_registry = WidgetRegistry()
 
@@ -740,12 +740,9 @@ class XLSFormConverter(QObject):
 
         parsed_row = widget_type_cb(WidgetContext(self, row))
 
-        # If there are not `parent_ids`, it means we are at the root level
+        # If the `parent_id` is `None`, it means we are at the root level
         # the form item's `parent_id` set to `None` represents that.
-        if self.parent_ids:
-            parent_id = self.parent_ids[-1]
-        else:
-            parent_id = ""
+        parent_id = self.parent_ids[-1]
 
         # Determine the parent id for the current form item.
         # If `group_status` is `GroupStatus.END``, then the last parent id is popped from the stack and no new element is added.
@@ -765,14 +762,14 @@ class XLSFormConverter(QObject):
             assert new_layer_id
 
             self.layer_ids.append(new_layer_id)
+            self.parent_ids.append(None)
         elif parsed_row.layer_status == LayerStatus.END:
             self.layer_ids.pop()
+            self.parent_ids.pop()
 
         # if there is a layer definition in the parsed row, create it and add it to the layers list
         if parsed_row.layer:
             assert parsed_row.layer_status == LayerStatus.BEGIN
-            assert parsed_row.group_status == GroupStatus.BEGIN
-            assert parsed_row.form_container
 
             self.layers.append(
                 generate_layer_def(
@@ -1442,13 +1439,6 @@ def widget_begin_repeat(ctx: WidgetContext) -> ParsedRow:
         layer=layer,
         relation=relation,
         form_field=form_field,
-        form_container={
-            "item_id": f"item_container_{ctx.row['idx']}",
-            "label": strip_tags(ctx.row["label"] or ""),
-            "type": "group_box",
-            "is_markdown": False,
-        },
-        group_status=GroupStatus.BEGIN,
         layer_status=LayerStatus.BEGIN,
     )
 
@@ -1458,7 +1448,6 @@ def widget_begin_repeat(ctx: WidgetContext) -> ParsedRow:
 )
 def widget_end_repeat(ctx: WidgetContext) -> ParsedRow:
     return ParsedRow(
-        group_status=GroupStatus.END,
         layer_status=LayerStatus.END,
     )
 
