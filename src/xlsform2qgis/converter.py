@@ -25,6 +25,7 @@ from xlsform2qgis.expressions.expression import (
     Expression,
     ExpressionContext,
     ParserType,
+    QgisRenderType,
 )
 
 from json2qgis.type_defs import (
@@ -809,11 +810,11 @@ class XLSFormConverter(QObject):
             form_items.append(
                 generate_form_item_def(
                     **{
+                        "type": "group_box",
                         "visibility_expression": visibility_expr,
                         **form_item_default,
                         **parsed_row.form_container,
                         "parent_id": parent_id,
-                        "type": "group_box",
                     },
                 )
             )
@@ -1376,13 +1377,21 @@ def widget_end_group(ctx: WidgetContext) -> ParsedRow:
 @register_type(["note"])
 def widget_note(ctx: WidgetContext) -> ParsedRow:
     container_id = f"item_container_{ctx.row['idx']}"
-    label = strip_tags(ctx.row["label"] or "")
+    label_expr_str = strip_tags(ctx.row["label"] or "")
+    label_expr = ctx.converter.get_expression(
+        label_expr_str, str(ctx.row["name"]), ParserType.TEMPLATE
+    )
+
+    if label_expr.is_str():
+        label = label_expr_str
+    else:
+        label = label_expr.to_qgis(expression_type=QgisRenderType.TEMPLATE)
 
     return ParsedRow(
         form_container={
             "item_id": container_id,
             "label": label,
-            "type": "group_box",
+            "type": "text",
             "is_markdown": False,
         },
     )
