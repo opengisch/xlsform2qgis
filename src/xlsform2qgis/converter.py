@@ -1402,7 +1402,7 @@ def widget_begin_repeat(ctx: WidgetContext) -> ParsedRow:
     layer_id = f"layer_repeat_{ctx.row['idx']}"
     layer: WeakLayerDef = {
         "layer_id": layer_id,
-        "name": ctx.row["name"],
+        "name": f"repeat_{ctx.row['name']}",
         "primary_key": "uuid",
         "geometry_type": "NoGeometry",
         "layer_type": "vector",
