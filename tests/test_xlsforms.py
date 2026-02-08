@@ -7,7 +7,7 @@ from xlsform2qgis.converter import (
     XLSFormConverter,
     generate_uuid_field_def,
 )
-from xlsform2qgis.expressions.expression import SUPPORTED_FUNCTIONS_BY_QGIS
+from xlsform2qgis.expressions.parser import SUPPORTED_FUNCTIONS
 from json2qgis.generate import (
     generate_layer_def,
     generate_field_def,
@@ -16,7 +16,7 @@ from json2qgis.generate import (
 
 
 def format_selected_expr(field_name: str, value: str) -> str:
-    expression: str = SUPPORTED_FUNCTIONS_BY_QGIS["selected"].expression  # type: ignore
+    expression: str = SUPPORTED_FUNCTIONS["selected"].expression  # type: ignore
 
     return expression.format("selected", f'"{field_name}"', f"'{value}'")
 
