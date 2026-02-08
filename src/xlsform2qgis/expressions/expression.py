@@ -137,6 +137,8 @@ if(
     "weighted-checklist": None,
     "true": QgisExpressionSpec("true"),
     "false": QgisExpressionSpec("false"),
+    # TODO @suricactus: implement https://xlsform.org/en/#how-to-pull-data-from-csv
+    "pulldata": None,
 }
 
 

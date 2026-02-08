@@ -215,6 +215,7 @@ SUPPORTED_FUNCTIONS: dict[str, FunctionSpec] = {
     "weighted-checklist": FunctionSpec(lambda c: c >= 4 and (c - 2) % 2 == 0),
     "true": FunctionSpec(0, 0),
     "false": FunctionSpec(0, 0),
+    "pulldata": FunctionSpec(4, 4),
 }
 
 OPENING_BRACKET = "("
