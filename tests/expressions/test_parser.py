@@ -174,6 +174,12 @@ class TestXlsformParser:
         with pytest.raises(ParseError, match="Unexpected token"):
             parse_expression("substr('hello', 1, 5)(${arg})")
 
+    def test_not_supported_xlsform_function(self) -> None:
+        with pytest.raises(
+            ParseError, match="Function not supported in QGIS expressions `digest`"
+        ):
+            parse_expression("digest('abcd', 'key')")
+
 
 class TestTemplateParser:
     def test_template_with_text_only(self):

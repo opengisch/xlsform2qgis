@@ -201,13 +201,13 @@ class Expression:
 
             # the parser should already have raised an error for unknown functions
             assert callee in SUPPORTED_FUNCTIONS
-            qgis_spec = SUPPORTED_FUNCTIONS[callee].expression
-            if qgis_spec is None:
-                raise ExpressionError(
-                    "Conversion of xlsform function not supported", node
-                )
 
-            qgis_expr = qgis_spec.format(callee, *rendered_args)
+            qgis_expr_tmpl = SUPPORTED_FUNCTIONS[callee].expression
+
+            # the parser should already have raised an error for functions not supported in QGIS
+            assert qgis_expr_tmpl
+
+            qgis_expr = qgis_expr_tmpl.format(callee, *rendered_args)
 
             return qgis_expr, 100
 

@@ -20,6 +20,7 @@ from xlsform2qgis.type_defs import (
     LayerStatus,
 )
 from xlsform2qgis.converter_utils import strip_tags
+from xlsform2qgis.expressions.parser import ParseError
 from xlsform2qgis.expressions.expression import (
     Expression,
     ExpressionContext,
@@ -408,7 +409,7 @@ class XLSFormConverter(QObject):
                 self._get_expression_context(current_field, parser_type),
                 should_strip_tags=should_strip_tags,
             )
-        except Exception as err:
+        except ParseError as err:
             logger.error(
                 f"Failed to parse expression `{expression_str}` for field `{current_field}`: {err}"
             )

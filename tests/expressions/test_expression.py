@@ -5,7 +5,6 @@ from xlsform2qgis.expressions.expression import (
     Expression,
     ExpressionContext,
     QgisRenderType,
-    ExpressionError,
 )
 from xlsform2qgis.expressions.parser import ParseError, ParserType
 
@@ -179,11 +178,11 @@ def test_empty_expression(ctx: ExpressionContext) -> None:
 
 
 def test_not_supported_xlsform_function(ctx: ExpressionContext) -> None:
-    expr = Expression("digest('abcd', 'key')", ctx)
     with pytest.raises(
-        ExpressionError, match=re.escape("Conversion of xlsform function not supporte")
+        ParseError,
+        match=re.escape("Function not supported in QGIS expressions `digest`"),
     ):
-        expr.to_qgis()
+        Expression("digest('abcd', 'key')", ctx)
 
 
 def test_curly_quote_normalization(ctx: ExpressionContext) -> None:

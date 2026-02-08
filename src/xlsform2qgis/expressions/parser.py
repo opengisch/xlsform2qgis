@@ -600,6 +600,14 @@ class _ExpressionParser:
                 "Invalid number of function arguments", callee_token.start, callee_token
             )
 
+        if spec.expression is None:
+            # we use `ParseError` here, even though this is not strictly a parsing error,
+            raise ParseError(
+                "Function not supported in QGIS expressions",
+                callee_token.start,
+                callee_token,
+            )
+
 
 def parse_expression(expression: str) -> AstNode:
     if not expression.strip():
