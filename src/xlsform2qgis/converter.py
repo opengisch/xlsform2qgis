@@ -817,9 +817,21 @@ class XLSFormConverter(QObject):
             )
 
         if parsed_row.relation:
+            assert parsed_row.form_field is not None
+            assert parsed_row.form_field.get("type") == "relation"
+
             self.relations.append(
                 generate_relation_def(
                     **parsed_row.relation,
+                )
+            )
+
+            form_items.append(
+                generate_form_item_def(
+                    visibility_expression=visibility_expr,
+                    is_label_on_top=True,
+                    **{**form_item_default, **parsed_row.form_field},
+                    parent_id=parent_id,
                 )
             )
 
@@ -1415,9 +1427,10 @@ def widget_begin_repeat(ctx: WidgetContext) -> ParsedRow:
         "is_private": True,
     }
 
+    relation_id = f"relation_{ctx.row['idx']}"
     relation = {
-        "relation_id": f"relation_{ctx.row['idx']}",
-        "name": f"relation_{ctx.row['idx']}",
+        "relation_id": relation_id,
+        "name": relation_id,
         "to_layer_id": ctx.converter.layers[-1]["layer_id"],
         "from_layer_id": layer_id,
         "field_pairs": [
@@ -1429,8 +1442,8 @@ def widget_begin_repeat(ctx: WidgetContext) -> ParsedRow:
     }
 
     form_field: WeakFormItemDef = {
-        "item_id": f"relation_{ctx.row['idx']}",
-        "field_name": "uuid_parent",
+        "item_id": relation_id,
+        "field_name": relation_id,
         "label": strip_tags(ctx.row["label"] or ""),
         "type": "relation",
     }
