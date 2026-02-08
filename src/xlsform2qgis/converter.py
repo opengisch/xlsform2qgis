@@ -294,10 +294,17 @@ def parse_xlsform_sheets(
     return (survey_sheet, choices_sheet, settings_sheet)
 
 
-def xlsform_to_json(xlsform_filename: PathOrStr) -> dict[str, Any]:
+def xlsform_to_json(
+    xlsform_filename: PathOrStr, skip_failed_expressions: bool = False
+) -> dict[str, Any]:
     survey_sheet, choices_sheet, settings_sheet = parse_xlsform_sheets(xlsform_filename)
 
-    converter = XLSFormConverter(survey_sheet, choices_sheet, settings_sheet)
+    converter = XLSFormConverter(
+        survey_sheet,
+        choices_sheet,
+        settings_sheet,
+        skip_failed_expressions=skip_failed_expressions,
+    )
 
     if not converter.is_valid():
         raise ValueError("Invalid XLSForm file!")
@@ -323,18 +330,28 @@ class XLSFormConverter(QObject):
     warning = pyqtSignal(str)
     error = pyqtSignal(str)
 
+    _skip_failed_expressions: bool
+    """return empty string instead of throwing an error when a row expression cannot be converted"""
+
+    _calculate_expressions: dict[str, Expression]
+    """store the expressions for each `type=calculate` row, so they can be passed as `ExpressionContext` when needed"""
+
     def __init__(
         self,
         survey_sheet: ParsedSheet,
         choices_sheet: ParsedSheet,
         settings_sheet: ParsedSheet,
         parent=None,
+        skip_failed_expressions: bool = False,
     ) -> None:
         super().__init__(parent)
 
         self.survey_sheet = survey_sheet
         self.choices_sheet = choices_sheet
         self.settings_sheet = settings_sheet
+
+        self._skip_failed_expressions = skip_failed_expressions
+        self._calculate_expressions = {}
 
         self.layers = []
         self.layer_tree = []
@@ -366,13 +383,53 @@ class XLSFormConverter(QObject):
 
         return None
 
+    def _get_expression_context(
+        self,
+        current_field: str,
+        parser_type: ParserType = ParserType.EXPRESSION,
+    ) -> ExpressionContext:
+        return ExpressionContext(
+            current_field=current_field,
+            calculate_expressions=self._calculate_expressions,
+            parser_type=parser_type,
+        )
+
+    def get_expression(
+        self,
+        expression_str: str,
+        current_field: str,
+        parser_type: ParserType = ParserType.EXPRESSION,
+        *,
+        should_strip_tags: bool = True,
+    ) -> Expression:
+        try:
+            return Expression(
+                expression_str,
+                self._get_expression_context(current_field, parser_type),
+                should_strip_tags=should_strip_tags,
+            )
+        except Exception as err:
+            logger.error(
+                f"Failed to parse expression `{expression_str}` for field `{current_field}`: {err}"
+            )
+
+            if self._skip_failed_expressions:
+                return Expression(
+                    "",
+                    self._get_expression_context(current_field),
+                    should_strip_tags=should_strip_tags,
+                )
+
+            raise
+
     def _get_field_def_alias(self, sheet_row: dict[str, Any]) -> AliasDef:
         if not sheet_row["label"]:
             return {}
 
-        alias_expression = Expression(
+        alias_expression = self.get_expression(
             sheet_row["label"],
-            ExpressionContext(sheet_row["name"], {}, ParserType.TEMPLATE),
+            sheet_row["name"],
+            ParserType.TEMPLATE,
             should_strip_tags=True,
         )
 
@@ -405,13 +462,8 @@ class XLSFormConverter(QObject):
 
         if sheet_row["constraint"]:
             constraint_str = str(sheet_row["constraint"]).strip()
-            constraint_expression = Expression(
-                constraint_str,
-                ExpressionContext(
-                    current_field=field_name,
-                    calculate_expressions={},
-                    parser_type=ParserType.EXPRESSION,
-                ),
+            constraint_expression = self.get_expression(
+                constraint_str, field_name
             ).to_qgis()
 
             if constraint_expression:
@@ -442,13 +494,8 @@ class XLSFormConverter(QObject):
 
         # handle default value from either `calculation` or `default` column
         if sheet_row["calculation"]:
-            default_value_expression = Expression(
-                sheet_row["calculation"],
-                ExpressionContext(
-                    current_field=field_name,
-                    calculate_expressions={},
-                    parser_type=ParserType.EXPRESSION,
-                ),
+            default_value_expression = self.get_expression(
+                sheet_row["calculation"], field_name
             ).to_qgis()
 
             field_def.update(
@@ -679,13 +726,8 @@ class XLSFormConverter(QObject):
             self.warning.emit("Triggers are not supported yet, ignoring!")
 
         if row["relevant"]:
-            visibility_expr = Expression(
-                row["relevant"],
-                ExpressionContext(
-                    current_field=str(row["name"]),
-                    calculate_expressions={},
-                    parser_type=ParserType.EXPRESSION,
-                ),
+            visibility_expr = self.get_expression(
+                row["relevant"], row["name"]
             ).to_qgis()
         else:
             visibility_expr = ""
@@ -963,11 +1005,9 @@ def widget_calculate(ctx: WidgetContext) -> ParsedRow:
     if ctx.row["calculation"]:
         form_item.update(
             {
-                "default_value": Expression(
+                "default_value": ctx.converter.get_expression(
                     ctx.row["calculation"],
-                    ExpressionContext(
-                        ctx.row["name"], {}, parser_type=ParserType.EXPRESSION
-                    ),
+                    str(ctx.row["name"]),
                     should_strip_tags=True,
                 ).to_qgis(),
                 "set_default_value_on_update": True,
@@ -991,9 +1031,8 @@ def widget_hidden(ctx: WidgetContext) -> ParsedRow:
     field: WeakFieldDef = {}
 
     if ctx.row["calculation"]:
-        default_value_expr = Expression(
-            ctx.row["calculation"],
-            ExpressionContext(ctx.row["name"], {}, parser_type=ParserType.EXPRESSION),
+        default_value_expr = ctx.converter.get_expression(
+            ctx.row["calculation"], str(ctx.row["name"])
         )
 
         field.update(
@@ -1244,9 +1283,9 @@ def widget_select_from_file(ctx: WidgetContext) -> ParsedRow:
         assert ctx.converter.find_layer(layer_id)
 
     filter_expressions = []
-    choice_filter_expr = Expression(
+    choice_filter_expr = ctx.converter.get_expression(
         ctx.row["choice_filter"] or "",
-        ExpressionContext(ctx.row["name"], {}, parser_type=ParserType.EXPRESSION),
+        ctx.row["name"],
     )
     filter_expressions.append(choice_filter_expr.to_qgis())
 
@@ -1336,7 +1375,7 @@ def widget_end_group(ctx: WidgetContext) -> ParsedRow:
 @register_type(["note"])
 def widget_note(ctx: WidgetContext) -> ParsedRow:
     container_id = f"item_container_{ctx.row['idx']}"
-    label = strip_tags(ctx.row["label"])
+    label = strip_tags(ctx.row["label"] or "")
 
     return ParsedRow(
         form_container={
@@ -1386,7 +1425,7 @@ def widget_begin_repeat(ctx: WidgetContext) -> ParsedRow:
     form_field: WeakFormItemDef = {
         "item_id": f"relation_{ctx.row['idx']}",
         "field_name": "uuid_parent",
-        "label": strip_tags(ctx.row["label"]),
+        "label": strip_tags(ctx.row["label"] or ""),
         "type": "relation",
     }
 
@@ -1396,7 +1435,7 @@ def widget_begin_repeat(ctx: WidgetContext) -> ParsedRow:
         form_field=form_field,
         form_container={
             "item_id": f"item_container_{ctx.row['idx']}",
-            "label": strip_tags(ctx.row["label"]),
+            "label": strip_tags(ctx.row["label"] or ""),
             "type": "group_box",
             "is_markdown": False,
         },
@@ -1434,18 +1473,25 @@ def main():
         "--output-dir",
         type=str,
     )
+    parser.add_argument(
+        "--skip-failed-expressions",
+        action="store_true",
+        help="Whether to skip failed expressions or not; if set to true, the converter will try to convert the expression and if it fails, it will log a warning and use an empty string as the expression value; if set to false, the converter will raise an error and stop the conversion process",
+    )
 
     args = parser.parse_args()
-
-    output_json = xlsform_to_json(args.input_xlsform)
+    output_json = xlsform_to_json(
+        args.input_xlsform, skip_failed_expressions=args.skip_failed_expressions
+    )
 
     if args.output_json:
         with open(args.output_json, "w") as f:
             json.dump(output_json, f, indent=4, sort_keys=True)
 
     if args.output_dir:
-        from json2qgis.json2qgis import ProjectCreator
+        from json2qgis.json2qgis import ProjectCreator, ProjectDef
 
+        output_json = cast(ProjectDef, output_json)
         creator = ProjectCreator(output_json)
         creator.build(args.output_dir)
 
