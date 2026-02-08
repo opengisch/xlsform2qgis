@@ -1060,7 +1060,7 @@ def widget_today(ctx: WidgetContext) -> ParsedRow:
     return ParsedRow(
         field={
             "widget_type": "Hidden",
-            "default_value": "format_date(now(), 'yyyy-MM-dd'",
+            "default_value": "format_date(now(), 'yyyy-MM-dd')",
             "set_default_value_on_update": False,
         },
         form_field={
