@@ -767,7 +767,7 @@ class TestConverter:
             item_id="item_container_1",
             label="Welcome to our new survey. Please answer a couple of  questions.",
             parent_id="item_container_0",
-            type="group_box",
+            type="text",
         )
         assert survey_layer["form_config"][2] == generate_form_item_def(
             item_id=survey_layer["form_config"][2]["item_id"],
