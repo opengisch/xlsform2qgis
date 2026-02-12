@@ -2,13 +2,16 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python Debugger: Attach",
+            "name": "Python Debugger: Launch in debug mode",
             "type": "debugpy",
-            "request": "attach",
-            "connect": {
-                "host": "localhost",
-                "port": 5678
-            }
+            "request": "launch",
+            "program": "${workspaceFolder}/src/xlsform2qgis/converter.py",
+            "args": ["samples/repeat_over_selected.xlsx", "--skip-failed-expressions", "--output-dir", "output/repeat_over_selected", "--output-json", "output/repeat_over_selected/project.json"],
+            "console": "integratedTerminal",
+            "pathMappings": [
+
+            ],
+            "justMyCode": false,
         }
     ]
 }
