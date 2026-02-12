@@ -247,6 +247,62 @@ class TestConverter:
             type="field",
         )
 
+    def test_xlsform_label(self, converter):
+        converter.survey_sheet.__iter__.return_value = [
+            generate_survey_row(
+                type="text",
+                name="field_001",
+            ),
+            generate_survey_row(
+                type="text",
+                name="field_002",
+                label="Field 002",
+            ),
+            generate_survey_row(
+                **{
+                    "type": "text",
+                    "name": "field_003",
+                    "label": "Field 003",
+                    "label::english": "Field English 003",
+                }
+            ),
+        ]
+        converter.settings_sheet.__iter__.return_value = [
+            {"default_language": "English"}
+        ]
+
+        converter.convert()
+
+        assert len(converter.layers) == 1
+
+        survey_layer = converter.layers[0]
+
+        assert len(survey_layer["fields"]) == 4
+
+        assert survey_layer["fields"][0] == generate_uuid_field_def(
+            field_id=survey_layer["fields"][0]["field_id"],
+        )
+        assert survey_layer["fields"][1] == generate_field_def(
+            field_id=survey_layer["fields"][1]["field_id"],
+            type="string",
+            name="field_001",
+            widget_type="TextEdit",
+        )
+        assert survey_layer["fields"][2] == generate_field_def(
+            field_id=survey_layer["fields"][2]["field_id"],
+            type="string",
+            name="field_002",
+            alias="Field 002",
+            widget_type="TextEdit",
+        )
+        assert survey_layer["fields"][3] == generate_field_def(
+            field_id=survey_layer["fields"][3]["field_id"],
+            type="string",
+            name="field_003",
+            alias="Field English 003",
+            widget_type="TextEdit",
+        )
+
     def test_xlsform_with_group(self, converter):
         converter.survey_sheet.__iter__.return_value = [
             generate_survey_row(

@@ -1,3 +1,4 @@
+from datetime import datetime
 import logging
 import json
 import re
@@ -18,6 +19,7 @@ from qgis.PyQt.QtCore import pyqtSignal, QVariant
 from xlsform2qgis.type_defs import (
     GroupStatus,
     LayerStatus,
+    XlsformSettings,
 )
 from xlsform2qgis.converter_utils import strip_tags
 from xlsform2qgis.expressions.parser import ParseError
@@ -332,6 +334,9 @@ class XLSFormConverter(QObject):
     warning = pyqtSignal(str)
     error = pyqtSignal(str)
 
+    _settings: XlsformSettings
+    """Settings as defined in the `settings` sheet of the XLSForm, with some defaults if not specified."""
+
     _skip_failed_expressions: bool
     """return empty string instead of throwing an error when a row expression cannot be converted"""
 
@@ -424,12 +429,35 @@ class XLSFormConverter(QObject):
 
             raise
 
+    def get_label(self, sheet_row: dict[str, Any]) -> str:
+        default_language = self._settings["default_language"].lower()
+
+        fallback_label = sheet_row.get("label", sheet_row["name"]) or ""
+
+        if not default_language:
+            logger.debug(
+                "No default language specified, using `label` or `name` column as fallback."
+            )
+
+            return strip_tags(fallback_label)
+
+        label_key = f"label::{default_language}"
+
+        if not sheet_row.get(label_key):
+            logger.warning(
+                f"No label found for default language `{default_language}`, using `label` or `name` column as fallback."
+            )
+
+        return strip_tags(sheet_row.get(label_key, fallback_label) or "")
+
     def _get_field_def_alias(self, sheet_row: dict[str, Any]) -> AliasDef:
-        if not sheet_row["label"]:
+        alias_str = self.get_label(sheet_row)
+
+        if not alias_str:
             return {}
 
         alias_expression = self.get_expression(
-            sheet_row["label"],
+            alias_str,
             sheet_row["name"],
             ParserType.TEMPLATE,
             should_strip_tags=True,
@@ -437,7 +465,7 @@ class XLSFormConverter(QObject):
 
         if alias_expression.is_str():
             return {
-                "alias": sheet_row["label"],
+                "alias": alias_str,
             }
         else:
             return {
@@ -583,8 +611,43 @@ class XLSFormConverter(QObject):
             # no compatibility warnings, horray!
             pass
 
+    def _get_settings(self) -> XlsformSettings:
+        settings_rows = list(self.settings_sheet)
+        settings: XlsformSettings = {
+            "form_title": "Untitled Form",
+            "form_id": "survey",
+            "default_language": "en",
+            "version": datetime.now().isoformat(timespec="minutes"),
+            "instance_name": '"uuid"',
+        }
+
+        if not settings_rows:
+            return settings
+
+        # let's assume there is only one row and ignore the rest
+        settings_row = settings_rows[0]
+
+        if settings_row.get("form_title"):
+            settings["form_title"] = settings_row["form_title"]
+
+        if settings_row.get("form_id"):
+            settings["form_id"] = settings_row["form_id"]
+
+        if settings_row.get("default_language"):
+            settings["default_language"] = settings_row["default_language"]
+
+        if settings_row.get("version"):
+            settings["version"] = settings_row["version"]
+
+        if settings_row.get("instance_name"):
+            settings["instance_name"] = settings_row["instance_name"]
+
+        return settings
+
     def to_json(self) -> dict[str, Any]:
         self.convert()
+
+        settings = self._get_settings()
 
         return {
             "project": {
@@ -598,7 +661,7 @@ class XLSFormConverter(QObject):
                 #     "custom_crs": "EPSG:4326",
                 # },
                 "author": "Ivan",
-                "title": "Converted XLSForm Project",
+                "title": settings["form_title"],
             },
             "layers": self.layers,
             "layer_tree": self.layer_tree,
@@ -611,6 +674,8 @@ class XLSFormConverter(QObject):
         assert self.survey_sheet
         assert self.settings_sheet
         assert self.choices_sheet
+
+        self._settings = self._get_settings()
 
         self.layers.extend(self._get_choices_layers())
 
