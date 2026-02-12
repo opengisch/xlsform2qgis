@@ -19,3 +19,7 @@ poetry.lock
 # Testing and QGIS related files
 output
 symbology-style.db
+.coverage
+
+# VS Code
+.vscode/*.code-workspace
