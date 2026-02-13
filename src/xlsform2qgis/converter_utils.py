@@ -17,7 +17,7 @@ class HTMLStripper(HTMLParser):
         return self.text.getvalue()
 
 
-def strip_tags(html: str) -> str:
+def strip_html(html: str) -> str:
     s = HTMLStripper()
     s.feed(html)
     return s.get_data()

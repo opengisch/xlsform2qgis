@@ -19,7 +19,7 @@ from xlsform2qgis.expressions.parser import (
     ParserType,
     SUPPORTED_FUNCTIONS,
 )
-from xlsform2qgis.converter_utils import strip_tags
+from xlsform2qgis.converter_utils import strip_html
 
 
 class QgisRenderType(StrEnum):
@@ -68,7 +68,7 @@ class Expression:
         should_strip_tags: bool = False,
     ):
         if should_strip_tags:
-            expression_str = strip_tags(expression_str)
+            expression_str = strip_html(expression_str)
 
         self.expression_str = expression_str
         self.context = context

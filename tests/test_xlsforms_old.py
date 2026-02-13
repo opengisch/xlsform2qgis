@@ -8,21 +8,22 @@ from qgis.core import (
     QgsProject,
     QgsVectorLayer,
 )
-from xlsform2qgis.converter_old import XLSFormConverter, strip_tags
+from xlsform2qgis.converter_old import XLSFormConverter
+from xlsform2qgis.converter_utils import strip_html
 
 
 class TestHTMLStripper:
     def test_strip_tags_simple(self):
-        assert strip_tags("<p>Hello World</p>") == "Hello World"
+        assert strip_html("<p>Hello World</p>") == "Hello World"
 
     def test_strip_tags_nested(self):
-        assert strip_tags("<div><p>Hello <b>World</b></p></div>") == "Hello World"
+        assert strip_html("<div><p>Hello <b>World</b></p></div>") == "Hello World"
 
     def test_strip_tags_no_tags(self):
-        assert strip_tags("Plain text") == "Plain text"
+        assert strip_html("Plain text") == "Plain text"
 
     def test_strip_tags_empty(self):
-        assert strip_tags("") == ""
+        assert strip_html("") == ""
 
 
 class TestXLSFormConverter:

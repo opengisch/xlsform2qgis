@@ -66,7 +66,7 @@ class HTMLStripper(HTMLParser):
         return self.text.getvalue()
 
 
-def strip_tags(html):
+def strip_html(html):
     s = HTMLStripper()
     s.feed(html)
     return s.get_data()
@@ -297,7 +297,7 @@ class XLSFormConverter(QObject):
             if feature.attribute(self.survey_label_index)
             else field_name
         )
-        field_alias = strip_tags(field_alias)
+        field_alias = strip_html(field_alias)
 
         field_type = None
         field = None
@@ -862,7 +862,7 @@ class XLSFormConverter(QObject):
                     output_lists_field_names.index(field_name)
                 )
                 if field_name == self.label_field_name:
-                    attribute_value = strip_tags(str(attribute_value))
+                    attribute_value = strip_html(str(attribute_value))
                 output_feature.setAttribute(field_name, attribute_value)
             output_lists_sink.addFeature(output_feature)
 
@@ -1398,7 +1398,7 @@ class XLSFormConverter(QObject):
                     relation.id(),
                     current_editor_form[-2].invisibleRootContainer(),
                 )
-                feature_label = strip_tags(feature_label)
+                feature_label = strip_html(feature_label)
                 editor_relation.setLabel(feature_label)
                 editor_relation.setShowLabel(feature_label != "")
                 if relevant_container:
@@ -1414,7 +1414,7 @@ class XLSFormConverter(QObject):
                     current_layer.pop()
                     current_editor_form.pop()
             elif feature_type == "begin group" or feature_type == "begin_group":
-                feature_label = strip_tags(feature_label)
+                feature_label = strip_html(feature_label)
 
                 if self.groups_as_tabs and current_editor_group_level[-1] == 0:
                     current_container.append(

@@ -21,7 +21,7 @@ from xlsform2qgis.type_defs import (
     LayerStatus,
     XlsformSettings,
 )
-from xlsform2qgis.converter_utils import strip_tags
+from xlsform2qgis.converter_utils import strip_html
 from xlsform2qgis.expressions.parser import ParseError
 from xlsform2qgis.expressions.expression import (
     Expression,
@@ -439,7 +439,7 @@ class XlsFormConverter(QObject):
                 "No default language specified, using `label` or `name` column as fallback."
             )
 
-            return strip_tags(fallback_label)
+            return strip_html(fallback_label)
 
         label_key = f"label::{default_language}"
 
@@ -448,7 +448,7 @@ class XlsFormConverter(QObject):
                 f"No label found for default language `{default_language}`, using `label` or `name` column as fallback."
             )
 
-        return strip_tags(sheet_row.get(label_key, fallback_label) or "")
+        return strip_html(sheet_row.get(label_key, fallback_label) or "")
 
     def _get_field_def_alias(self, sheet_row: dict[str, Any]) -> AliasDef:
         alias_str = self.get_label(sheet_row)
@@ -1444,7 +1444,7 @@ def widget_geometry(ctx: WidgetContext) -> ParsedRow:
 @register_type(["begin group", "begin_group"])
 def widget_begin_group(ctx: WidgetContext) -> ParsedRow:
     container_id = f"item_container_{ctx.row['idx']}"
-    label = strip_tags(ctx.row["label"])
+    label = strip_html(ctx.row["label"])
 
     return ParsedRow(
         form_container={
@@ -1467,7 +1467,7 @@ def widget_end_group(ctx: WidgetContext) -> ParsedRow:
 @register_type(["note"])
 def widget_note(ctx: WidgetContext) -> ParsedRow:
     container_id = f"item_container_{ctx.row['idx']}"
-    label_expr_str = strip_tags(ctx.row["label"] or "")
+    label_expr_str = strip_html(ctx.row["label"] or "")
     label_expr = ctx.converter.get_expression(
         label_expr_str, str(ctx.row["name"]), ParserType.TEMPLATE
     )
@@ -1525,7 +1525,7 @@ def widget_begin_repeat(ctx: WidgetContext) -> ParsedRow:
     form_field: WeakFormItemDef = {
         "item_id": relation_id,
         "field_name": relation_id,
-        "label": strip_tags(ctx.row["label"] or ""),
+        "label": strip_html(ctx.row["label"] or ""),
         "type": "relation",
     }
 
