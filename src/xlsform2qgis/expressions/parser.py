@@ -4,6 +4,7 @@ from collections.abc import Callable
 
 from dataclasses import dataclass
 from enum import StrEnum
+import re
 
 from xlsform2qgis.expressions.tokenizer import (
     Token,
@@ -119,14 +120,14 @@ class ParseError(Exception):
 
 
 class FunctionSpec:
-    expression: str | None
+    expression: str | Callable[..., str] | None
 
     _validate_function: Callable[[int], bool]
 
     def __init__(
         self,
         args_count: Callable | int | tuple[int, int | None],
-        qgis_expression: str | None,
+        qgis_expression: str | Callable[..., str] | None,
     ) -> None:
         if callable(args_count):
             self._validate_function = args_count
@@ -160,6 +161,36 @@ class FunctionSpec:
 
     def validate(self, count: int) -> bool:
         return self._validate_function(count)
+
+    def args_count(self) -> int:
+        if callable(self.expression):
+            return -1
+
+        expression = self.expression or ""
+
+        return len(re.findall(r"(?<!\{)\{(\d+)\}(?!\})", expression))
+
+    def format(self, /, *args: str) -> str:
+        if self.expression is None:
+            raise ValueError("Cannot format expression for unsupported function")
+
+        args_count = self.args_count()
+
+        if callable(self.expression):
+            assert args_count == -1
+
+            return self.expression(*args).format(*args)
+
+        if len(args) > args_count + 1:
+            raise ValueError(
+                f"Expected at most {args_count} arguments, got {len(args)}"
+            )
+
+        # add nulls for all the missing params
+        while len(args) < args_count:
+            args += ("NULL",)
+
+        return self.expression.format(*args)
 
 
 SUPPORTED_FUNCTIONS: dict[str, FunctionSpec] = {
@@ -203,7 +234,12 @@ if(
     ),
     "string-length": FunctionSpec((0, 1), "length({1})"),
     "normalize-space": FunctionSpec(1, "trim( regexp_replace( {1}, '\\s+', ' ') )"),
-    "concat": FunctionSpec((1, None), "concat({1}, {2})"),
+    "concat": FunctionSpec(
+        (1, None),
+        lambda *args: "concat({})".format(
+            ", ".join(f"{{{i}}}" for i in range(1, len(args)))
+        ),
+    ),
     "join": FunctionSpec(2, "array_to_string({1}, {2})"),
     "boolean-from-string": FunctionSpec(1, "{1} == 'true' or {1} == '1'"),
     "string": FunctionSpec(1, "to_string({1})"),
@@ -248,7 +284,9 @@ if(
     "randomize": FunctionSpec((1, 2), "array_get({1}, rand(0, array_length({1}) - 1))"),
     "uuid": FunctionSpec(
         (0, 1),
-        "if({1}, substr(repeat( uuid(format:='WithoutBraces'), ceil({1} / 32) ), 1, {1}), uuid(format:='WithoutBraces'))",
+        lambda *args: "uuid(format:='WithoutBraces'))"
+        if len(args) == 1
+        else "substr(repeat(uuid(format:='WithoutBraces'), ceil({1} / 32)), 1, {1})",
     ),
     "boolean": FunctionSpec(1, "to_bool({1})"),
     "not": FunctionSpec(1, "not {1}"),

@@ -271,3 +271,11 @@ def test_nested_selected_functions(ctx: ExpressionContext) -> None:
         Expression("int(number(${choice}))", ctx).to_qgis()
         == 'to_int(to_real("choice"))'
     )
+
+
+def test_concatenate_function(ctx: ExpressionContext) -> None:
+    assert Expression("concat(${first_name})", ctx).to_qgis() == 'concat("first_name")'
+    assert (
+        Expression("concat(${first_name}, ' ', ${last_name})", ctx).to_qgis()
+        == 'concat("first_name", \' \', "last_name")'
+    )

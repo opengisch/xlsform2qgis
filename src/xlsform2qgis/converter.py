@@ -679,6 +679,15 @@ class XLSFormConverter(QObject):
 
         self.layers.extend(self._get_choices_layers())
 
+        if self._settings["instance_name"]:
+            display_expression = self.get_expression(
+                self._settings["instance_name"],
+                "instance_name",
+                ParserType.TEMPLATE,
+            ).to_qgis()
+        else:
+            display_expression = ""
+
         layer_id = "survey_layer"
         layer_name = "Survey"
         self.layers.append(
@@ -693,6 +702,7 @@ class XLSFormConverter(QObject):
                     "qfieldsync/cloud_action": "offline",
                     "qfieldsync/action": "offline",
                 },
+                display_expression=display_expression,
             )
         )
         self.layer_tree.append(

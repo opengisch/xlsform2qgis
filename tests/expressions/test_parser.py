@@ -180,6 +180,27 @@ class TestXlsformParser:
         ):
             parse_expression("digest('abcd', 'key')")
 
+    def test_concatenate_function(self):
+        ast = parse_expression("concat(${first_name})")
+        assert isinstance(ast, Call)
+        assert isinstance(ast.callee, Identifier)
+        assert ast.callee.name == "concat"
+        assert len(ast.args) == 1
+        assert isinstance(ast.args[0], Variable)
+        assert ast.args[0].name == "first_name"
+
+        ast = parse_expression("concat(${first_name}, ' ', ${last_name})")
+        assert isinstance(ast, Call)
+        assert isinstance(ast.callee, Identifier)
+        assert ast.callee.name == "concat"
+        assert len(ast.args) == 3
+        assert isinstance(ast.args[0], Variable)
+        assert ast.args[0].name == "first_name"
+        assert isinstance(ast.args[1], Literal)
+        assert ast.args[1].value == " "
+        assert isinstance(ast.args[2], Variable)
+        assert ast.args[2].name == "last_name"
+
 
 class TestTemplateParser:
     def test_template_with_text_only(self):

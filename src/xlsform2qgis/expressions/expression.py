@@ -202,10 +202,10 @@ class Expression:
             # the parser should already have raised an error for unknown functions
             assert callee in SUPPORTED_FUNCTIONS
 
-            qgis_expr_tmpl = SUPPORTED_FUNCTIONS[callee].expression
+            qgis_expr_tmpl = SUPPORTED_FUNCTIONS[callee]
 
             # the parser should already have raised an error for functions not supported in QGIS
-            assert qgis_expr_tmpl
+            assert qgis_expr_tmpl.expression
 
             qgis_expr = qgis_expr_tmpl.format(callee, *rendered_args)
 
