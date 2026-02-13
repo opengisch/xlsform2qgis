@@ -763,6 +763,10 @@ class XlsFormConverter(QObject):
         if row["trigger"]:
             self.warning.emit("Triggers are not supported yet, ignoring!")
 
+        # we start with some defaults that are common for all field and widget types
+        field_default: WeakFieldDef = self._get_field_def(row)
+        form_item_default: WeakFormItemDef = {}
+
         if row["relevant"]:
             visibility_expr = self.get_expression(
                 row["relevant"], row["name"]
@@ -770,9 +774,8 @@ class XlsFormConverter(QObject):
         else:
             visibility_expr = ""
 
-        # we start with some defaults that are common for all field and widget types
-        field_default: WeakFieldDef = self._get_field_def(row)
-        form_item_default: WeakFormItemDef = {}
+        if visibility_expr:
+            form_item_default["visibility_expression"] = visibility_expr
 
         parsed_row = widget_type_cb(WidgetContext(self, row))
 
@@ -830,12 +833,14 @@ class XlsFormConverter(QObject):
             fields.append(field)
             form_items.append(
                 generate_form_item_def(
-                    visibility_expression=visibility_expr,
-                    is_label_on_top=True,
-                    **{**form_item_default, **parsed_row.form_field},
-                    field_name=field["name"],
-                    parent_id=parent_id,
-                    type="field",
+                    **{
+                        "is_label_on_top": True,
+                        **form_item_default,
+                        **parsed_row.form_field,
+                        "field_name": field["name"],
+                        "parent_id": parent_id,
+                        "type": "field",
+                    },
                 )
             )
 
@@ -844,7 +849,6 @@ class XlsFormConverter(QObject):
                 generate_form_item_def(
                     **{
                         "type": "group_box",
-                        "visibility_expression": visibility_expr,
                         **form_item_default,
                         **parsed_row.form_container,
                         "parent_id": parent_id,

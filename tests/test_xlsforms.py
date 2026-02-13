@@ -246,6 +246,7 @@ class TestConverter:
             item_id=survey_layer["form_config"][0]["item_id"],
             field_name="field_001",
             type="field",
+            is_label_on_top=True,
         )
 
     def test_xlsform_label(self, converter):
@@ -350,6 +351,7 @@ class TestConverter:
             field_name="field_001",
             parent_id="item_container_0",
             type="field",
+            is_label_on_top=True,
         )
 
     def test_xlsform_with_group_nesting(self, converter):
@@ -412,6 +414,7 @@ class TestConverter:
             field_name="field_001_001",
             parent_id="item_container_1",
             type="field",
+            is_label_on_top=True,
         )
 
     def test_xlsform_with_repeat(self, converter):
@@ -786,6 +789,7 @@ class TestConverter:
             label="Welcome to our new survey. Please answer a couple of  questions.",
             parent_id="item_container_0",
             type="text",
+            is_markdown=False,
         )
         assert survey_layer["form_config"][2] == generate_form_item_def(
             item_id=survey_layer["form_config"][2]["item_id"],
