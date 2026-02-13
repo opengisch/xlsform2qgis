@@ -4,8 +4,7 @@ import logging
 import os
 import tempfile
 
-from qgis.core import QgsApplication, Qgis, QgsProject
-
+from qgis.core import Qgis, QgsApplication, QgsProject
 
 logger = logging.getLogger(__name__)
 

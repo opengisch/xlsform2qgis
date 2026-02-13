@@ -1,18 +1,19 @@
 from pathlib import Path
-import pytest
 from unittest.mock import MagicMock
 
-from xlsform2qgis.converter import (
-    parse_xlsform_sheets,
-    XlsFormConverter,
-    generate_uuid_field_def,
-)
-from xlsform2qgis.expressions.parser import SUPPORTED_FUNCTIONS
+import pytest
 from json2qgis.generate import (
-    generate_layer_def,
     generate_field_def,
     generate_form_item_def,
+    generate_layer_def,
 )
+
+from xlsform2qgis.converter import (
+    XlsFormConverter,
+    generate_uuid_field_def,
+    parse_xlsform_sheets,
+)
+from xlsform2qgis.expressions.parser import SUPPORTED_FUNCTIONS
 
 
 def format_selected_expr(field_name: str, value: str) -> str:

@@ -1,59 +1,55 @@
-from datetime import datetime
-import logging
 import json
+import logging
 import re
-
-from collections.abc import Callable, Iterable, Iterator
 from collections import defaultdict
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal, cast
-from qgis.PyQt.QtCore import QObject
 
-
+from json2qgis.generate import (
+    generate_field_def,
+    generate_form_item_def,
+    generate_layer_def,
+    generate_relation_def,
+)
+from json2qgis.type_defs import (
+    AliasDef,
+    ChoicesDef,
+    ConstraintStrength,
+    FieldDef,
+    FormItemDef,
+    GeometryType,
+    LayerDef,
+    LayerTreeItemDef,
+    PathOrStr,
+    RelationDef,
+    WeakFieldDef,
+    WeakFormItemDef,
+    WeakLayerDef,
+)
 from qgis.core import (
     QgsVectorLayer,
 )
-from qgis.PyQt.QtCore import pyqtSignal, QVariant
+from qgis.PyQt.QtCore import QObject, QVariant, pyqtSignal
 
-from xlsform2qgis.type_defs import (
-    GroupStatus,
-    LayerStatus,
-    XlsformSettings,
-)
 from xlsform2qgis.converter_utils import (
-    strip_html,
-    parse_xlsform_select_from_file_parameters,
     parse_xlsform_range_parameters,
+    parse_xlsform_select_from_file_parameters,
+    strip_html,
 )
-from xlsform2qgis.expressions.parser import ParseError
 from xlsform2qgis.expressions.expression import (
     Expression,
     ExpressionContext,
     ParserType,
     QgisRenderType,
 )
-
-from json2qgis.type_defs import (
-    ConstraintStrength,
-    GeometryType,
-    FieldDef,
-    LayerDef,
-    LayerTreeItemDef,
-    RelationDef,
-    WeakFieldDef,
-    WeakFormItemDef,
-    WeakLayerDef,
-    ChoicesDef,
-    AliasDef,
-    PathOrStr,
-    FormItemDef,
-)
-from json2qgis.generate import (
-    generate_field_def,
-    generate_layer_def,
-    generate_form_item_def,
-    generate_relation_def,
+from xlsform2qgis.expressions.parser import ParseError
+from xlsform2qgis.type_defs import (
+    GroupStatus,
+    LayerStatus,
+    XlsformSettings,
 )
 
 # try:

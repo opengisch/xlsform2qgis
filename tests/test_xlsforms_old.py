@@ -1,13 +1,14 @@
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import cast
 
-from tempfile import TemporaryDirectory
 import pytest
-from pathlib import Path
 from qgis.core import (
     Qgis,
     QgsProject,
     QgsVectorLayer,
 )
+
 from xlsform2qgis.converter_old import XLSFormConverter
 from xlsform2qgis.converter_utils import strip_html
 

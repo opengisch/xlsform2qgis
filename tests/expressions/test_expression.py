@@ -1,4 +1,5 @@
 import re
+
 import pytest
 
 from xlsform2qgis.expressions.expression import (

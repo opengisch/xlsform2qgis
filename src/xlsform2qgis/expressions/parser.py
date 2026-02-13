@@ -1,10 +1,9 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
-
 from dataclasses import dataclass
 from enum import StrEnum
-import re
 
 from xlsform2qgis.expressions.tokenizer import (
     Token,

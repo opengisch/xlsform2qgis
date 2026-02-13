@@ -1,8 +1,10 @@
-from typing import assert_never
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import assert_never
 
+from xlsform2qgis.converter_utils import strip_html
 from xlsform2qgis.expressions.parser import (
+    SUPPORTED_FUNCTIONS,
     AstNode,
     BinaryOp,
     BracketList,
@@ -11,15 +13,13 @@ from xlsform2qgis.expressions.parser import (
     Identifier,
     Literal,
     LiteralType,
+    ParserType,
+    Template,
     UnaryOp,
     Variable,
-    Template,
     parse_expression,
     parse_template,
-    ParserType,
-    SUPPORTED_FUNCTIONS,
 )
-from xlsform2qgis.converter_utils import strip_html
 
 
 class QgisRenderType(StrEnum):
