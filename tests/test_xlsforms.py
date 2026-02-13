@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 from xlsform2qgis.converter import (
     parse_xlsform_sheets,
-    XLSFormConverter,
+    XlsFormConverter,
     generate_uuid_field_def,
 )
 from xlsform2qgis.expressions.parser import SUPPORTED_FUNCTIONS
@@ -58,7 +58,7 @@ def converter():
     choices_sheet = MagicMock()
     settings_sheet = MagicMock()
 
-    return XLSFormConverter(
+    return XlsFormConverter(
         survey_sheet,
         choices_sheet,
         settings_sheet,
@@ -74,7 +74,7 @@ def run_around_tests():
 
 
 class TestConverter:
-    def test_get_choices_values(self, converter: XLSFormConverter):
+    def test_get_choices_values(self, converter: XlsFormConverter):
         converter.choices_sheet.__iter__.return_value = [  # type: ignore
             {
                 "list_name": "list_001",
@@ -500,7 +500,7 @@ class TestConverter:
             xlsform_filename
         )
 
-        converter = XLSFormConverter(survey_sheet, choices_sheet, settings_sheet)
+        converter = XlsFormConverter(survey_sheet, choices_sheet, settings_sheet)
 
         converter.convert()
 

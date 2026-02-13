@@ -180,7 +180,7 @@ def parse_xlsform_select_from_file_parameters(
 
 @dataclass
 class WidgetContext:
-    converter: "XLSFormConverter"
+    converter: "XlsFormConverter"
     row: dict[str, Any]
 
 
@@ -303,7 +303,7 @@ def xlsform_to_json(
 ) -> dict[str, Any]:
     survey_sheet, choices_sheet, settings_sheet = parse_xlsform_sheets(xlsform_filename)
 
-    converter = XLSFormConverter(
+    converter = XlsFormConverter(
         survey_sheet,
         choices_sheet,
         settings_sheet,
@@ -316,7 +316,7 @@ def xlsform_to_json(
     return converter.to_json()
 
 
-class XLSFormConverter(QObject):
+class XlsFormConverter(QObject):
     survey_sheet: ParsedSheet
     choices_sheet: ParsedSheet
     settings_sheet: ParsedSheet
