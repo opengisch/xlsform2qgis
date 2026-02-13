@@ -474,6 +474,23 @@ class TestConverter:
 
         assert survey_layer["geometry_type"] == "Polygon"
 
+    def test_xlsform_display_expression(self, converter):
+        converter.settings_sheet.__iter__.return_value = [
+            {"instance_name": r"concat(${lname}, '-', ${fname}, '-', uuid())"},
+        ]
+
+        converter.convert()
+
+        assert converter._settings
+        assert (
+            converter._settings["instance_name"]
+            == r"concat(${lname}, '-', ${fname}, '-', uuid())"
+        )
+        assert (
+            converter.get_display_expression(converter._settings["instance_name"])
+            == "concat(\"lname\", '-', \"fname\", '-', uuid(format:='WithoutBraces')))"
+        )
+
     @pytest.fixture
     def xlsform_filename(self):
         return str(Path(__file__).parent / "data/service_rating.xlsx")

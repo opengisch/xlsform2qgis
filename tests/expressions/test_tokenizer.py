@@ -182,7 +182,7 @@ class TestTokenizerPositions:
 
 class TestTokenizerErrors:
     def test_unterminated_variable(self):
-        with pytest.raises(ValueError, match="Unexpected character: \$"):
+        with pytest.raises(ValueError, match="Unexpected character: \\$"):
             _tokens("${missing")
 
     def test_unterminated_string(self):

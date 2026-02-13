@@ -644,6 +644,18 @@ class XLSFormConverter(QObject):
 
         return settings
 
+    def get_display_expression(self, xlsform_expression: str | None) -> str:
+        if not xlsform_expression:
+            return ""
+
+        display_expression = self.get_expression(
+            xlsform_expression,
+            "instance_name",
+            ParserType.EXPRESSION,
+        ).to_qgis()
+
+        return display_expression
+
     def to_json(self) -> dict[str, Any]:
         self.convert()
 
@@ -679,15 +691,9 @@ class XLSFormConverter(QObject):
 
         self.layers.extend(self._get_choices_layers())
 
-        if self._settings["instance_name"]:
-            display_expression = self.get_expression(
-                self._settings["instance_name"],
-                "instance_name",
-                ParserType.TEMPLATE,
-            ).to_qgis()
-        else:
-            display_expression = ""
-
+        display_expression = self.get_display_expression(
+            self._settings["instance_name"]
+        )
         layer_id = "survey_layer"
         layer_name = "Survey"
         self.layers.append(
