@@ -588,46 +588,65 @@ class _ExpressionParser:
 
     def _parse_arguments(self, close_bracket: str) -> list[AstNode]:
         elements: list[AstNode] = []
+
         if self._match(TokenType.PUNCTUATION, close_bracket):
             return elements
+
         while True:
             elements.append(self._parse_or())
+
             if self._match(TokenType.PUNCTUATION, close_bracket):
                 break
+
             comma = self._expect(TokenType.PUNCTUATION, ",")
+
             if (
                 self._current().type == TokenType.PUNCTUATION
                 and self._current().value == close_bracket
             ):
                 raise ParseError("Trailing comma", comma.start)
+
         return elements
 
     @classmethod
     def _validate_ast(cls, node: AstNode) -> None:
         if isinstance(node, UnaryOp):
             if node.operand is None:
-                raise ParseError("Invalid unary expression")
+                raise AssertionError("Invalid unary expression")
+
             cls._validate_ast(node.operand)
+
             return
+
         if isinstance(node, BinaryOp):
             if node.left is None or node.right is None:
-                raise ParseError("Invalid binary expression")
+                raise AssertionError("Invalid binary expression")
+
             cls._validate_ast(node.left)
             cls._validate_ast(node.right)
+
             return
+
         if isinstance(node, Call):
             if node.callee is None:
-                raise ParseError("Invalid call expression")
+                raise AssertionError("Invalid call expression")
+
             if not isinstance(node.callee, Identifier):
-                raise ParseError("Invalid call target")
+                raise AssertionError("Invalid call target")
+
             cls._validate_ast(node.callee)
+
             for arg in node.args:
                 cls._validate_ast(arg)
+
             return
+
         if isinstance(node, BracketList):
             for element in node.elements:
                 cls._validate_ast(element)
+
             return
+
         if isinstance(node, (Literal, Variable, Identifier, Current)):
             return
 
