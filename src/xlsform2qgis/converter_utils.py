@@ -19,6 +19,7 @@ class HTMLStripper(HTMLParser):
 
 
 def strip_html(html: str) -> str:
+    """Strips HTML tags from a string."""
     s = HTMLStripper()
     s.feed(html)
     return s.get_data()

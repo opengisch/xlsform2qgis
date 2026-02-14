@@ -275,8 +275,6 @@ class XlsFormConverter(QObject):
     survey_sheet: ParsedSheet
     choices_sheet: ParsedSheet
     settings_sheet: ParsedSheet
-    _field_compatibilities: dict[str, bool]
-
     layers: list[LayerDef]
     layer_tree: list[LayerTreeItemDef]
     relations: list[RelationDef]
@@ -293,10 +291,13 @@ class XlsFormConverter(QObject):
     """Settings as defined in the `settings` sheet of the XLSForm, with some defaults if not specified."""
 
     _skip_failed_expressions: bool
-    """return empty string instead of throwing an error when a row expression cannot be converted"""
+    """Return empty string instead of throwing an error when a row expression cannot be converted."""
 
     _calculate_expressions: dict[str, Expression]
-    """store the expressions for each `type=calculate` row, so they can be passed as `ExpressionContext` when needed"""
+    """Store the expressions for each `type=calculate` row, so they can be passed as `ExpressionContext` when needed."""
+
+    _field_compatibilities: dict[str, bool]
+    """Keep track of the compatibility of different XLSForm field types with QGIS and QField, to be able to emit warnings and info messages during the conversion process."""
 
     def __init__(
         self,
