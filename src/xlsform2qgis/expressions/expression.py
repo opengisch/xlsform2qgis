@@ -121,8 +121,9 @@ class Expression:
 
                 return TEMPLATE_START + field_expr + TEMPLATE_END, 100
 
-            # pragma: no cover
-            return "", 100
+            raise AssertionError(
+                f"Unexpected node type in template expression: {type(node)}"
+            )
 
         def render(node: AstNode, seen: set[str]) -> tuple[str, int]:
             # regular render should never encounter Template nodes, but we add an assertion here just to be safe
@@ -189,8 +190,7 @@ class Expression:
                 joined = ", ".join(elements)
                 return f"{node.open_bracket}{joined}{node.close_bracket}", 100
 
-            # pragma: no cover
-            return "", 100
+            raise AssertionError(f"Unexpected node type in expression: {type(node)}")
 
         def render_call(node: Call, seen: set[str]) -> tuple[str, int]:
             rendered_args = [render(arg, seen)[0] for arg in node.args]
