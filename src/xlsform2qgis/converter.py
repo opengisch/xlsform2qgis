@@ -280,7 +280,6 @@ class XlsFormConverter(QObject):
     layer_tree: list[LayerTreeItemDef]
     relations: list[RelationDef]
     parent_ids: list[str | None]
-    layer_ids: list[str]
 
     info = pyqtSignal(str)
     warning = pyqtSignal(str)
@@ -303,6 +302,9 @@ class XlsFormConverter(QObject):
 
     _root_form_group_type: FormItemGroupTypes
     """Similar to `_form_group_type`, but specifically for the root level form groups, to allow more flexibility in the form structure definition. By default it is set to `tab` to encourage better form organization, but it can be set to `group_box` if the user prefers a flatter form structure."""
+
+    _layer_ids: list[str]
+    """Stack to keep track of the current layer ids while parsing the survey sheet, to be able to assign fields and form items to the correct layer. Whenever a new layer is defined, its id is pushed to the stack, and whenever a layer definition ends, it is popped from the stack."""
 
     def __init__(
         self,
@@ -328,8 +330,8 @@ class XlsFormConverter(QObject):
         self.layers = []
         self.layer_tree = []
         self.relations = []
-        self.layer_ids = []
-        self.parent_ids = [None]
+        self._layer_ids = []
+        self.parent_ids = []
 
         self.widget_registry = WidgetRegistry()
 
@@ -356,7 +358,7 @@ class XlsFormConverter(QObject):
         return None
 
     def get_form_group_type(self) -> FormItemGroupTypes:
-        if self.parent_ids[-1] is None:
+        if len(self.parent_ids) == 0 or self.parent_ids[-1] is None:
             return self._root_form_group_type
 
         return self._form_group_type
@@ -399,6 +401,31 @@ class XlsFormConverter(QObject):
                 )
 
             raise
+
+    def _enter_layer(self, layer_def: LayerDef) -> None:
+        layer_id = layer_def["layer_id"]
+
+        self.layers.append(layer_def)
+        self._layer_ids.append(layer_id)
+        self.parent_ids.append(None)
+
+        self.layer_tree.append(
+            {
+                "layer_id": layer_id,
+                "item_id": f"layer_{layer_id}",
+                "name": layer_def["name"],
+                "parent_id": "",
+                "type": "layer",
+                "is_checked": True,
+            }
+        )
+
+    def _exit_layer(self) -> str:
+        layer_id = self._layer_ids.pop()
+
+        self.parent_ids.pop()
+
+        return layer_id
 
     def _get_label(self, sheet_row: dict[str, Any]) -> str:
         default_language = self._settings["default_language"].lower()
@@ -673,7 +700,7 @@ class XlsFormConverter(QObject):
             label=layer_name,
             parent_id=None,
         )
-        self.layers.append(
+        self._enter_layer(
             generate_layer_def(
                 layer_id=layer_id,
                 name=layer_name,
@@ -689,19 +716,8 @@ class XlsFormConverter(QObject):
                 display_expression=display_expression,
             )
         )
-        self.layer_tree.append(
-            {
-                "layer_id": layer_id,
-                "item_id": f"layer_{layer_id}",
-                "name": layer_name,
-                "parent_id": "",
-                "type": "layer",
-                "is_checked": True,
-            }
-        )
 
         self.parent_ids.append(form_item["item_id"])
-        self.layer_ids.append(layer_id)
 
         self.build_survey_form()
 
@@ -714,7 +730,7 @@ class XlsFormConverter(QObject):
             try:
                 # If there are not `parent_ids`, it means we are at the root level
                 # the form item's `parent_id` set to `None` represents that.
-                layer_id = self.layer_ids[-1]
+                layer_id = self._layer_ids[-1]
                 layer_def = self.find_layer(layer_id)
 
                 assert layer_def is not None
@@ -819,26 +835,9 @@ class XlsFormConverter(QObject):
         # Determine the layer id for the current form item.
         # If `layer_status` is `layerStatus.END``, then the last layer id is popped from the stack and no new element is added.
         if parsed_row.layer_status == LayerStatus.BEGIN:
-            # we need to define a new variable with the newly added layer id to help mypy understand that it is not `None`
-            new_layer_id: str | None = parsed_row.layer.get("layer_id")
-
-            assert new_layer_id
-
-            self.layer_ids.append(new_layer_id)
-            self.parent_ids.append(None)
+            self._enter_layer(generate_layer_def(**parsed_row.layer))
         elif parsed_row.layer_status == LayerStatus.END:
-            self.layer_ids.pop()
-            self.parent_ids.pop()
-
-        # if there is a layer definition in the parsed row, create it and add it to the layers list
-        if parsed_row.layer:
-            assert parsed_row.layer_status == LayerStatus.BEGIN
-
-            self.layers.append(
-                generate_layer_def(
-                    **parsed_row.layer,
-                )
-            )
+            self._exit_layer()
 
         if parsed_row.geometry_type:
             assert not parsed_row.layer
