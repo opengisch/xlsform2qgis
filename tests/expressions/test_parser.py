@@ -72,6 +72,10 @@ class TestXlsformParser:
         with pytest.raises(ParseError, match="Trailing comma"):
             parse_expression("(1, 2,)")
 
+    def test_no_trailing_comma_eof(self):
+        with pytest.raises(ParseError, match="Trailing comma"):
+            parse_expression("(1, 2,")
+
     def test_no_leading_comma(self):
         with pytest.raises(ParseError, match="Comma cannot start an expression"):
             parse_expression(", 1")
