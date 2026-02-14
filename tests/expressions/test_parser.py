@@ -4,6 +4,7 @@ from xlsform2qgis.expressions.parser import (
     BinaryOp,
     BracketList,
     Call,
+    Current,
     Identifier,
     Literal,
     LiteralType,
@@ -209,6 +210,32 @@ class TestXlsformParser:
         assert isinstance(ast.args[2], Variable)
         assert ast.args[2].name == "last_name"
 
+    def test_parse_expression_empty_returns_empty_literal(self):
+        ast = parse_expression("")
+
+        assert isinstance(ast, Literal)
+        assert ast.type == LiteralType.EMPTY
+        assert ast.value == ""
+        assert ast.raw_value == ""
+
+    def test_parse_expression_whitespace_returns_empty_literal(self):
+        ast = parse_expression("   \n\t ")
+
+        assert isinstance(ast, Literal)
+        assert ast.type == LiteralType.EMPTY
+
+    def test_parse_expression_current_value(self):
+        ast = parse_expression(".")
+
+        assert isinstance(ast, Current)
+        assert ast.raw_value == "."
+
+    def test_parenthesized_single_expression_is_unwrapped(self):
+        ast = parse_expression("(${field})")
+
+        assert isinstance(ast, Variable)
+        assert ast.name == "field"
+
 
 class TestTemplateParser:
     def test_template_with_text_only(self):
@@ -232,3 +259,25 @@ class TestTemplateParser:
         assert ast.elements[1].name == "name"
         assert isinstance(ast.elements[2], Literal)
         assert ast.elements[2].value == ", welcome!"
+
+    def test_parse_template_with_variable_only(self):
+        ast = parse_template("${name}")
+
+        assert isinstance(ast, Template)
+        assert len(ast.elements) == 1
+        assert isinstance(ast.elements[0], Variable)
+        assert ast.elements[0].name == "name"
+
+    def test_parse_template_empty_returns_empty_literal(self):
+        ast = parse_template("")
+
+        assert isinstance(ast, Literal)
+        assert ast.type == LiteralType.EMPTY
+        assert ast.value == ""
+        assert ast.raw_value == ""
+
+    def test_parse_template_whitespace_returns_empty_literal(self):
+        ast = parse_template("   \n\t ")
+
+        assert isinstance(ast, Literal)
+        assert ast.type == LiteralType.EMPTY
