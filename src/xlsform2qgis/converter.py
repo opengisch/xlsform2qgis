@@ -304,7 +304,7 @@ class XlsFormConverter(QObject):
         survey_sheet: ParsedSheet,
         choices_sheet: ParsedSheet,
         settings_sheet: ParsedSheet,
-        parent=None,
+        parent: QObject | None = None,
         skip_failed_expressions: bool = False,
     ) -> None:
         super().__init__(parent)
