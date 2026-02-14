@@ -268,6 +268,30 @@ def test_use_template_with_current_value() -> None:
     )
 
 
+def test_use_template_substitutes_calculate_expression() -> None:
+    ctx = build_context(
+        parser_type=ParserType.TEMPLATE,
+        expressions={"greeting": "Hello ${name}"},
+    )
+
+    assert (
+        Expression("${greeting}", ctx).to_qgis(expression_type=QgisRenderType.TEMPLATE)
+        == 'Hello [% "name" %]'
+    )
+
+
+def test_use_template_cycle_fallbacks_to_field_name() -> None:
+    ctx = build_context(
+        parser_type=ParserType.TEMPLATE,
+        expressions={"loop": "${loop}"},
+    )
+
+    assert (
+        Expression("${loop}", ctx).to_qgis(expression_type=QgisRenderType.TEMPLATE)
+        == '"loop"'
+    )
+
+
 def test_expressions_substitution(ctx: ExpressionContext) -> None:
     assert Expression("${calc_field} * 2", ctx).to_qgis() == "(10 + 5 + randf()) * 2"
 
