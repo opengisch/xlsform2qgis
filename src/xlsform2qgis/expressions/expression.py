@@ -224,6 +224,7 @@ class Expression:
                 "+": 40,
                 "-": 40,
                 "*": 50,
+                # TODO @suricactus: support actual `/` path concatenation operator in XLSForm
                 "/": 50,
                 "div": 50,
                 "mod": 50,
