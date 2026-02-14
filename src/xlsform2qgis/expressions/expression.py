@@ -39,6 +39,8 @@ class ExpressionError(Exception): ...
 
 TEMPLATE_START = "[% "
 TEMPLATE_END = " %]"
+DOUBLE_QUOTE = '"'
+SINGLE_QUOTE = "'"
 
 
 def format_date_codes(xlsform_format: str) -> str:
@@ -83,8 +85,11 @@ class Expression:
         use_current: bool = False,
         expression_type: QgisRenderType = QgisRenderType.EXPRESSION,
     ) -> str:
-        def wrap_field(field_name: str) -> str:
-            return f'"{field_name}"'
+        def wrap_field(field_name: str, quote_char: str = DOUBLE_QUOTE) -> str:
+            # QGIS uses double quotes to escape field names, but if the field name itself contains a double quote,
+            # we need to escape it by doubling it (e.g. field name `he"llo` would be escaped as `"he""llo"`
+            field_name = field_name.replace(quote_char, quote_char + quote_char)
+            return f"{quote_char}{field_name}{quote_char}"
 
         def render_tmpl(node: AstNode, seen: set[str]) -> tuple[str, int]:
             assert expression_type != QgisRenderType.EXPRESSION, (
@@ -135,7 +140,7 @@ class Expression:
                     return "", 100
 
                 if node.type == LiteralType.STRING:
-                    return f"'{node.value}'", 100
+                    return wrap_field(node.value, SINGLE_QUOTE), 100
 
                 return node.raw_value, 100
 
