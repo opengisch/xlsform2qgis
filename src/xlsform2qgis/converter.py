@@ -400,7 +400,7 @@ class XlsFormConverter(QObject):
 
             raise
 
-    def get_label(self, sheet_row: dict[str, Any]) -> str:
+    def _get_label(self, sheet_row: dict[str, Any]) -> str:
         default_language = self._settings["default_language"].lower()
 
         fallback_label = sheet_row.get("label", sheet_row["name"]) or ""
@@ -422,7 +422,7 @@ class XlsFormConverter(QObject):
         return strip_html(sheet_row.get(label_key, fallback_label) or "")
 
     def _get_field_def_alias(self, sheet_row: dict[str, Any]) -> AliasDef:
-        alias_str = self.get_label(sheet_row)
+        alias_str = self._get_label(sheet_row)
 
         if not alias_str:
             return {}
