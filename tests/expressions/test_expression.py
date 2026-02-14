@@ -296,3 +296,21 @@ def test_concatenate_function(ctx: ExpressionContext) -> None:
         Expression("concat(${first_name}, ' ', ${last_name})", ctx).to_qgis()
         == 'concat("first_name", \' \', "last_name")'
     )
+
+
+def test_is_str_with_literal_string(ctx: ExpressionContext) -> None:
+    assert Expression("'hello'", ctx).is_str() is True
+
+
+def test_is_str_with_literal_number(ctx: ExpressionContext) -> None:
+    assert Expression("123", ctx).is_str() is False
+
+
+def test_is_str_with_template_only_strings() -> None:
+    template_ctx = build_context(parser_type=ParserType.TEMPLATE)
+    assert Expression("Hello world", template_ctx).is_str() is True
+
+
+def test_is_str_with_template_including_variable() -> None:
+    template_ctx = build_context(parser_type=ParserType.TEMPLATE)
+    assert Expression("Hello ${name}", template_ctx).is_str() is False
