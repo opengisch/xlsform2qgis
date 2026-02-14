@@ -6,6 +6,7 @@ from xlsform2qgis.expressions.expression import (
     Expression,
     ExpressionContext,
     QgisRenderType,
+    format_date_codes,
 )
 from xlsform2qgis.expressions.parser import ParseError, ParserType
 
@@ -38,6 +39,21 @@ def build_context(
 @pytest.fixture
 def ctx() -> ExpressionContext:
     return build_context()
+
+
+@pytest.mark.parametrize(
+    ["xls_format", "expected"],
+    [
+        ("%Y-%m-%d", "yyyy-MM-dd"),
+        ("%y/%n/%e", "yy/M/d"),
+        ("%a, %b %d", "ddd, MMM dd"),
+        ("Date: %Y_%m_%d at %a", "Date: yyyy_MM_dd at ddd"),
+        ("plain-text", "plain-text"),
+        ("%Y %Y %m", "yyyy yyyy MM"),
+    ],
+)
+def test_format_date_codes(xls_format: str, expected: str) -> None:
+    assert format_date_codes(xls_format) == expected
 
 
 @pytest.mark.parametrize(
