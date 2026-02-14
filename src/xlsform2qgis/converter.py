@@ -279,7 +279,6 @@ class XlsFormConverter(QObject):
     layers: list[LayerDef]
     layer_tree: list[LayerTreeItemDef]
     relations: list[RelationDef]
-    parent_ids: list[str | None]
 
     info = pyqtSignal(str)
     warning = pyqtSignal(str)
@@ -306,6 +305,9 @@ class XlsFormConverter(QObject):
     _layer_ids: list[str]
     """Stack to keep track of the current layer ids while parsing the survey sheet, to be able to assign fields and form items to the correct layer. Whenever a new layer is defined, its id is pushed to the stack, and whenever a layer definition ends, it is popped from the stack."""
 
+    _container_ids: list[str | None]
+    """Stack to keep track of the current parent container ids while parsing the survey sheet, to be able to assign form items to the correct parent container. Whenever a new container is defined, its id is pushed to the stack, and whenever a container definition ends, it is popped from the stack. The value `None` is used to represent the root level, where there is no parent container."""
+
     def __init__(
         self,
         survey_sheet: ParsedSheet,
@@ -331,7 +333,7 @@ class XlsFormConverter(QObject):
         self.layer_tree = []
         self.relations = []
         self._layer_ids = []
-        self.parent_ids = []
+        self._container_ids = []
 
         self.widget_registry = WidgetRegistry()
 
@@ -358,7 +360,7 @@ class XlsFormConverter(QObject):
         return None
 
     def get_form_group_type(self) -> FormItemGroupTypes:
-        if len(self.parent_ids) == 0 or self.parent_ids[-1] is None:
+        if len(self._container_ids) == 0 or self._container_ids[-1] is None:
             return self._root_form_group_type
 
         return self._form_group_type
@@ -404,28 +406,81 @@ class XlsFormConverter(QObject):
 
     def _enter_layer(self, layer_def: LayerDef) -> None:
         layer_id = layer_def["layer_id"]
+        layer_name = layer_def["name"]
 
         self.layers.append(layer_def)
         self._layer_ids.append(layer_id)
-        self.parent_ids.append(None)
+
+        self._enter_container(None)
 
         self.layer_tree.append(
             {
                 "layer_id": layer_id,
                 "item_id": f"layer_{layer_id}",
-                "name": layer_def["name"],
+                "name": layer_name,
                 "parent_id": "",
                 "type": "layer",
                 "is_checked": True,
             }
         )
 
+        form_item = generate_form_item_def(
+            item_id=f"tab_item_{layer_id}",
+            type=self.get_form_group_type(),
+            label=layer_name,
+            parent_id=None,
+        )
+        self._enter_container(form_item)
+
     def _exit_layer(self) -> str:
         layer_id = self._layer_ids.pop()
 
-        self.parent_ids.pop()
+        self._exit_container()
 
         return layer_id
+
+    def _current_layer(self) -> LayerDef:
+        if not self._layer_ids:
+            raise ValueError("No layers defined yet!")
+
+        layer_id = self._layer_ids[-1]
+        layer_def = self.find_layer(layer_id)
+
+        if not layer_def:
+            raise ValueError(f"Current layer with id {layer_id} not found!")
+
+        return layer_def
+
+    def _add_container(self, container_def: FormItemDef) -> None:
+        self._current_layer()["form_config"].append(container_def)
+
+    def _enter_container(self, container_def: FormItemDef | None) -> None:
+        if container_def:
+            self._add_container(container_def)
+
+            self._container_ids.append(container_def["item_id"])
+        else:
+            self._container_ids.append(None)
+
+    def _exit_container(self) -> str | None:
+        item_id = self._container_ids.pop()
+
+        return item_id
+
+    def _current_container(self) -> FormItemDef | None:
+        if not self._container_ids:
+            raise ValueError("No form containers defined yet!")
+
+        if self._container_ids[-1] is None:
+            return None
+
+        for form_item_def in reversed(self._current_layer()["form_config"]):
+            if form_item_def["item_id"] == self._container_ids[-1]:
+                return form_item_def
+
+        raise AssertionError(
+            f"Current container with id {self._container_ids[-1]} not found!"
+        )
 
     def _get_label(self, sheet_row: dict[str, Any]) -> str:
         default_language = self._settings["default_language"].lower()
@@ -694,12 +749,6 @@ class XlsFormConverter(QObject):
         )
         layer_id = "survey_layer"
         layer_name = "Survey"
-        form_item = generate_form_item_def(
-            item_id=layer_id,
-            type=self.get_form_group_type(),
-            label=layer_name,
-            parent_id=None,
-        )
         self._enter_layer(
             generate_layer_def(
                 layer_id=layer_id,
@@ -708,7 +757,6 @@ class XlsFormConverter(QObject):
                 fields=[
                     generate_uuid_field_def(),
                 ],
-                form_config=[form_item],
                 custom_properties={
                     "qfieldsync/cloud_action": "offline",
                     "qfieldsync/action": "offline",
@@ -716,8 +764,6 @@ class XlsFormConverter(QObject):
                 display_expression=display_expression,
             )
         )
-
-        self.parent_ids.append(form_item["item_id"])
 
         self.build_survey_form()
 
@@ -818,19 +864,32 @@ class XlsFormConverter(QObject):
             form_item_default["visibility_expression"] = visibility_expr
 
         parsed_row = widget_type_cb(WidgetContext(self, row))
+        current_container = self._current_container()
 
         # If the `parent_id` is `None`, it means we are at the root level
         # the form item's `parent_id` set to `None` represents that.
-        parent_id = self.parent_ids[-1]
+        if current_container is not None:
+            parent_id = current_container["item_id"]
+        else:
+            parent_id = None
 
         # Determine the parent id for the current form item.
         # If `group_status` is `GroupStatus.END``, then the last parent id is popped from the stack and no new element is added.
         if parsed_row.group_status == GroupStatus.BEGIN:
-            self.parent_ids.append(parsed_row.form_container["item_id"])
-            # alternatively, we could do call get_form recursively:
-            # self.get_form(parsed_row.form_container["item_id"])
+            self._enter_container(
+                generate_form_item_def(
+                    **{
+                        "type": self.get_form_group_type(),
+                        **form_item_default,
+                        **parsed_row.form_container,
+                        "parent_id": parent_id,
+                    },
+                )
+            )
+        # alternatively, we could do call get_form recursively:
+        # self.get_form(parsed_row.form_container["item_id"])
         elif parsed_row.group_status == GroupStatus.END:
-            self.parent_ids.pop()
+            self._exit_container()
 
         # Determine the layer id for the current form item.
         # If `layer_status` is `layerStatus.END``, then the last layer id is popped from the stack and no new element is added.
@@ -866,16 +925,17 @@ class XlsFormConverter(QObject):
                     },
                 )
             )
-
-        elif parsed_row.form_container:
-            form_items.append(
+        elif (
+            parsed_row.form_container
+            and parsed_row.group_status == GroupStatus.NONE
+            and parsed_row.layer_status == LayerStatus.NONE
+        ):
+            self._add_container(
                 generate_form_item_def(
                     **{
-                        "type": self.get_form_group_type(),
-                        **form_item_default,
                         **parsed_row.form_container,
                         "parent_id": parent_id,
-                    },
+                    }
                 )
             )
 
