@@ -667,9 +667,9 @@ class XlsFormConverter(QObject):
     def _get_settings(self) -> XlsformSettings:
         settings_rows = list(self.settings_sheet)
         settings: XlsformSettings = {
-            "form_title": "Untitled Form",
+            "form_title": "Untitled Survey",
             "form_id": "survey",
-            "default_language": "en",
+            "default_language": "",
             "version": datetime.now().isoformat(timespec="minutes"),
             "instance_name": '"uuid"',
         }
