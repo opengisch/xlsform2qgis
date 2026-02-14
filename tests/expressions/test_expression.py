@@ -338,3 +338,12 @@ def test_is_str_with_template_only_strings() -> None:
 def test_is_str_with_template_including_variable() -> None:
     template_ctx = build_context(parser_type=ParserType.TEMPLATE)
     assert Expression("Hello ${name}", template_ctx).is_str() is False
+
+
+def test_expression_strips_html_when_requested(ctx: ExpressionContext) -> None:
+    expr = Expression(
+        "<p>${field}</p> and <b>'ok'</b>",
+        ctx,
+        should_strip_tags=True,
+    )
+    assert expr.to_qgis() == "\"field\" and 'ok'"
