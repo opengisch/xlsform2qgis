@@ -667,6 +667,12 @@ class XlsFormConverter(QObject):
         )
         layer_id = "survey_layer"
         layer_name = "Survey"
+        form_item = generate_form_item_def(
+            item_id=layer_id,
+            type=self.get_form_group_type(),
+            label=layer_name,
+            parent_id=None,
+        )
         self.layers.append(
             generate_layer_def(
                 layer_id=layer_id,
@@ -675,6 +681,7 @@ class XlsFormConverter(QObject):
                 fields=[
                     generate_uuid_field_def(),
                 ],
+                form_config=[form_item],
                 custom_properties={
                     "qfieldsync/cloud_action": "offline",
                     "qfieldsync/action": "offline",
@@ -693,6 +700,7 @@ class XlsFormConverter(QObject):
             }
         )
 
+        self.parent_ids.append(form_item["item_id"])
         self.layer_ids.append(layer_id)
 
         self.build_survey_form()
