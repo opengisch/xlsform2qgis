@@ -103,8 +103,10 @@ class Expression:
                 return joined, 100
 
             if isinstance(node, Literal):
-                # in template context, we only have strings and empty literals, and we want to preserve the quotes if they are part of the string
-                assert node.type == LiteralType.STRING
+                if node.type not in (LiteralType.STRING, LiteralType.EMPTY):
+                    raise AssertionError(
+                        f"Unexpected literal type in template expression: {node.type}"
+                    )
 
                 return node.value, 100
 
