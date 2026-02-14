@@ -678,7 +678,7 @@ def parse_expression(expression: str) -> AstNode:
         return Literal("", "", LiteralType.EMPTY)
 
     parser = _ExpressionParser.from_expression(expression)
-    return parser._parse_expression()
+    return parser.parse()
 
 
 def parse_template(expression: str) -> AstNode:
@@ -687,4 +687,4 @@ def parse_template(expression: str) -> AstNode:
 
     parser = _ExpressionParser.from_template(expression)
 
-    return parser._parse_template()
+    return parser.parse()
