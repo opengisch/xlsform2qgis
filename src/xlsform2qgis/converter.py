@@ -20,6 +20,7 @@ from json2qgis.type_defs import (
     ConstraintStrength,
     FieldDef,
     FormItemDef,
+    FormItemGroupTypes,
     GeometryType,
     LayerDef,
     LayerTreeItemDef,
@@ -281,8 +282,6 @@ class XlsFormConverter(QObject):
     parent_ids: list[str | None]
     layer_ids: list[str]
 
-    form_group_type: Literal["group_box", "tab"] = "group_box"
-
     info = pyqtSignal(str)
     warning = pyqtSignal(str)
     error = pyqtSignal(str)
@@ -299,6 +298,12 @@ class XlsFormConverter(QObject):
     _field_compatibilities: dict[str, bool]
     """Keep track of the compatibility of different XLSForm field types with QGIS and QField, to be able to emit warnings and info messages during the conversion process."""
 
+    _form_group_type: FormItemGroupTypes = "group_box"
+    """The form group type to use for non-root groups in the form. By default it is set to `group_box`, but it can be set to `tab` if the user prefers a more tabbed form structure."""
+
+    _root_form_group_type: FormItemGroupTypes
+    """Similar to `_form_group_type`, but specifically for the root level form groups, to allow more flexibility in the form structure definition. By default it is set to `tab` to encourage better form organization, but it can be set to `group_box` if the user prefers a flatter form structure."""
+
     def __init__(
         self,
         survey_sheet: ParsedSheet,
@@ -306,6 +311,8 @@ class XlsFormConverter(QObject):
         settings_sheet: ParsedSheet,
         parent: QObject | None = None,
         skip_failed_expressions: bool = False,
+        form_group_type: FormItemGroupTypes = "group_box",
+        root_form_group_type: FormItemGroupTypes = "tab",
     ) -> None:
         super().__init__(parent)
 
@@ -313,6 +320,8 @@ class XlsFormConverter(QObject):
         self.choices_sheet = choices_sheet
         self.settings_sheet = settings_sheet
 
+        self._form_group_type = form_group_type
+        self._root_form_group_type = root_form_group_type
         self._skip_failed_expressions = skip_failed_expressions
         self._calculate_expressions = {}
 
@@ -345,6 +354,12 @@ class XlsFormConverter(QObject):
                 return layer_def
 
         return None
+
+    def get_form_group_type(self) -> FormItemGroupTypes:
+        if self.parent_ids[-1] is None:
+            return self._root_form_group_type
+
+        return self._form_group_type
 
     def _get_expression_context(
         self,
@@ -849,7 +864,7 @@ class XlsFormConverter(QObject):
             form_items.append(
                 generate_form_item_def(
                     **{
-                        "type": "group_box",
+                        "type": self.get_form_group_type(),
                         **form_item_default,
                         **parsed_row.form_container,
                         "parent_id": parent_id,
@@ -1410,8 +1425,7 @@ def widget_begin_group(ctx: WidgetContext) -> ParsedRow:
         form_container={
             "item_id": container_id,
             "label": label,
-            # NOTE in the original converter, we cannot have tabs if we are on level 2
-            "type": ctx.converter.form_group_type,
+            "type": ctx.converter.get_form_group_type(),
         },
         group_status=GroupStatus.BEGIN,
     )

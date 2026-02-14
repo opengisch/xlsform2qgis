@@ -63,6 +63,7 @@ def converter():
         survey_sheet,
         choices_sheet,
         settings_sheet,
+        root_form_group_type="group_box",
     )
 
 
@@ -213,6 +214,45 @@ class TestConverter:
                 }
             ),
         ]
+
+    def test_xlsform_form_group_type_default(self):
+        survey_sheet = MagicMock()
+        choices_sheet = MagicMock()
+        settings_sheet = MagicMock()
+
+        converter = XlsFormConverter(survey_sheet, choices_sheet, settings_sheet)
+
+        assert converter._form_group_type == "group_box"
+        assert converter._root_form_group_type == "tab"
+        assert converter.get_form_group_type() == "tab"
+
+        # simulate there is a new group in the survey sheet
+
+        converter.parent_ids.append("parent_id_here")
+
+        assert converter.get_form_group_type() == "group_box"
+
+    def test_xlsform_form_group_type_configured(self):
+        survey_sheet = MagicMock()
+        choices_sheet = MagicMock()
+        settings_sheet = MagicMock()
+
+        converter = XlsFormConverter(
+            survey_sheet,
+            choices_sheet,
+            settings_sheet,
+            form_group_type="tab",
+            root_form_group_type="group_box",
+        )
+
+        assert converter._form_group_type == "tab"
+        assert converter._root_form_group_type == "group_box"
+        assert converter.get_form_group_type() == "group_box"
+
+        # simulate there is a new group in the survey sheet
+        converter.parent_ids.append("parent_id_here")
+
+        assert converter.get_form_group_type() == "tab"
 
     def test_xlsform_with_text_field(self, converter):
         converter.survey_sheet.__iter__.return_value = [
@@ -504,7 +544,9 @@ class TestConverter:
             xlsform_filename
         )
 
-        converter = XlsFormConverter(survey_sheet, choices_sheet, settings_sheet)
+        converter = XlsFormConverter(
+            survey_sheet, choices_sheet, settings_sheet, root_form_group_type="tab"
+        )
 
         converter.convert()
 
@@ -782,7 +824,7 @@ class TestConverter:
         assert survey_layer["form_config"][0] == generate_form_item_def(
             item_id="item_container_0",
             label="Introduction page",
-            type="group_box",
+            type="tab",
         )
         assert survey_layer["form_config"][1] == generate_form_item_def(
             item_id="item_container_1",
@@ -807,7 +849,7 @@ class TestConverter:
         assert survey_layer["form_config"][4] == generate_form_item_def(
             item_id="item_container_6",
             label="Statisfaction evaluation page",
-            type="group_box",
+            type="tab",
             visibility_expression=format_selected_expr("recommend", "yes"),
         )
         assert survey_layer["form_config"][5] == generate_form_item_def(
@@ -863,7 +905,7 @@ class TestConverter:
         assert survey_layer["form_config"][13] == generate_form_item_def(
             item_id="item_container_17",
             label="Company details page",
-            type="group_box",
+            type="tab",
         )
         assert survey_layer["form_config"][14] == generate_form_item_def(
             item_id="item_container_18",
@@ -901,7 +943,7 @@ class TestConverter:
         assert survey_layer["form_config"][19] == generate_form_item_def(
             item_id="item_container_25",
             label="Contact details page",
-            type="group_box",
+            type="tab",
         )
         assert survey_layer["form_config"][20] == generate_form_item_def(
             item_id="item_container_26",
