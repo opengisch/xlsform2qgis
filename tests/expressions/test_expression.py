@@ -288,7 +288,7 @@ def test_use_template_cycle_fallbacks_to_field_name() -> None:
 
     assert (
         Expression("${loop}", ctx).to_qgis(expression_type=QgisRenderType.TEMPLATE)
-        == '"loop"'
+        == '[% "loop" %]'
     )
 
 

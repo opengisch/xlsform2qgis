@@ -92,6 +92,12 @@ class Expression:
             field_name = field_name.replace(quote_char, quote_char + quote_char)
             return f"{quote_char}{field_name}{quote_char}"
 
+        def get_field_value(field_name: str) -> str:
+            if use_current:
+                return f"current_value({wrap_field(field_name, SINGLE_QUOTE)})"
+            else:
+                return wrap_field(field_name)
+
         def render_tmpl(node: AstNode, seen: set[str]) -> tuple[str, int]:
             if expression_type == QgisRenderType.EXPRESSION:
                 raise AssertionError(
@@ -114,7 +120,8 @@ class Expression:
 
             if isinstance(node, Variable):
                 if node.name in seen:
-                    return wrap_field(node.name), 100
+                    field_expr = get_field_value(node.name)
+                    return TEMPLATE_START + field_expr + TEMPLATE_END, 100
 
                 calculate_expr = self.context.calculate_expressions.get(node.name)
                 if calculate_expr is not None:
@@ -123,11 +130,7 @@ class Expression:
                     seen.remove(node.name)
                     return rendered, prec
 
-                if use_current:
-                    field_expr = f"current_value({wrap_field(node.name, SINGLE_QUOTE)})"
-                else:
-                    field_expr = wrap_field(node.name)
-
+                field_expr = get_field_value(node.name)
                 return TEMPLATE_START + field_expr + TEMPLATE_END, 100
 
             raise AssertionError(
@@ -150,7 +153,7 @@ class Expression:
 
             if isinstance(node, Variable):
                 if node.name in seen:
-                    return wrap_field(node.name), 100
+                    return get_field_value(node.name), 100
 
                 calculate_expr = self.context.calculate_expressions.get(node.name)
                 if calculate_expr is not None:
@@ -159,10 +162,7 @@ class Expression:
                     seen.remove(node.name)
                     return rendered, prec
 
-                if use_current:
-                    return f"current_value({wrap_field(node.name, SINGLE_QUOTE)})", 100
-                else:
-                    return wrap_field(node.name), 100
+                return get_field_value(node.name), 100
 
             if isinstance(node, Current):
                 return wrap_field(self.context.current_field), 100
