@@ -93,9 +93,10 @@ class Expression:
             return f"{quote_char}{field_name}{quote_char}"
 
         def render_tmpl(node: AstNode, seen: set[str]) -> tuple[str, int]:
-            assert expression_type != QgisRenderType.EXPRESSION, (
-                "render_tmpl should only be used for TEMPLATE expressions"
-            )
+            if expression_type == QgisRenderType.EXPRESSION:
+                raise AssertionError(
+                    "`render_tmpl` should only be used for `TEMPLATE` expressions"
+                )
 
             if isinstance(node, Template):
                 elements = [render_tmpl(arg, seen)[0] for arg in node.elements]
