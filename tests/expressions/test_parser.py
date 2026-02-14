@@ -84,6 +84,10 @@ class TestXlsformParser:
         with pytest.raises(ParseError, match="Comma after opening bracket"):
             parse_expression("(, 1)")
 
+    def test_no_comma_after_operator(self):
+        with pytest.raises(ParseError, match="Comma after operator"):
+            parse_expression("(1 +, 2)")
+
     def test_operator_between_operands(self):
         ast = parse_expression("${a} + ${b} - 3")
         assert isinstance(ast, BinaryOp)
