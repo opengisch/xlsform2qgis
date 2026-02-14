@@ -88,6 +88,7 @@ class Expression:
         def wrap_field(field_name: str, quote_char: str = DOUBLE_QUOTE) -> str:
             # QGIS uses double quotes to escape field names, but if the field name itself contains a double quote,
             # we need to escape it by doubling it (e.g. field name `he"llo` would be escaped as `"he""llo"`
+            # Same goes for single quotes when used to wrap strings.
             field_name = field_name.replace(quote_char, quote_char + quote_char)
             return f"{quote_char}{field_name}{quote_char}"
 
@@ -122,7 +123,7 @@ class Expression:
                     return rendered, prec
 
                 if use_current:
-                    field_expr = f"current_value('{node.name}')"
+                    field_expr = f"current_value({wrap_field(node.name, SINGLE_QUOTE)})"
                 else:
                     field_expr = wrap_field(node.name)
 
@@ -158,7 +159,7 @@ class Expression:
                     return rendered, prec
 
                 if use_current:
-                    return f"current_value('{node.name}')", 100
+                    return f"current_value({wrap_field(node.name, SINGLE_QUOTE)})", 100
                 else:
                     return wrap_field(node.name), 100
 
