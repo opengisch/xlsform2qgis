@@ -348,9 +348,10 @@ class _ExpressionParser:
 
                     opening = stack.pop()
                     if opening.value != OPENING_BRACKET:
-                        raise ParseError("Mismatched brackets", token.start)
+                        raise AssertionError("Mismatched brackets", token.start)
 
                     last_significant = token
+
                     continue
 
                 if value == ",":
@@ -372,8 +373,10 @@ class _ExpressionParser:
                             and next_token.value == CLOSING_BRACKET
                         ):
                             raise ParseError("Trailing comma", token.start)
+
                         if next_token.type == TokenType.EOF:
                             raise ParseError("Trailing comma", token.start)
+
                     last_significant = token
                     continue
 
@@ -415,6 +418,7 @@ class _ExpressionParser:
         if last_significant is not None:
             if last_significant.type == TokenType.OPERATOR:
                 raise ParseError("Trailing operator", last_significant.start)
+
             if (
                 last_significant.type == TokenType.PUNCTUATION
                 and last_significant.value == ","
@@ -441,10 +445,12 @@ class _ExpressionParser:
 
     def _expect(self, token_type: TokenType, value: str | None = None) -> Token:
         token = self._current()
-        if token.type != token_type:
+        if token.type != token_type:  # pragma: no cover
             raise ParseError("Unexpected token", token.start)
-        if value is not None and token.value != value:
+
+        if value is not None and token.value != value:  # pragma: no cover
             raise ParseError("Unexpected token", token.start)
+
         self._advance()
         return token
 
@@ -480,7 +486,7 @@ class _ExpressionParser:
 
                 continue
 
-            raise ParseError("Unexpected token", token.start)
+            raise AssertionError("Unexpected token", token.start)
 
         if not elements:
             return Literal("", "", LiteralType.EMPTY)
@@ -577,7 +583,8 @@ class _ExpressionParser:
             if open_bracket == OPENING_BRACKET and len(elements) == 1:
                 return elements[0]
             return BracketList(open_bracket, close_bracket, elements)
-        raise ParseError("Unexpected token", token.start)
+
+        raise AssertionError("Unexpected token", token.start)
 
     def _parse_arguments(self, close_bracket: str) -> list[AstNode]:
         elements: list[AstNode] = []
@@ -623,7 +630,8 @@ class _ExpressionParser:
             return
         if isinstance(node, (Literal, Variable, Identifier, Current)):
             return
-        raise ParseError("Unknown AST node")
+
+        raise AssertionError("Unknown AST node")
 
     def _validate_call(self, callee_token: Token, args: list[AstNode]) -> None:
         func_name = callee_token.value
