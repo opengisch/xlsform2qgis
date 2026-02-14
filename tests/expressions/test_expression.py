@@ -6,9 +6,9 @@ from xlsform2qgis.expressions.expression import (
     Expression,
     ExpressionContext,
     QgisRenderType,
-    format_date_codes,
 )
 from xlsform2qgis.expressions.parser import ParseError, ParserType
+from xlsform2qgis.expressions.utils import convert_date_format, convert_datetime_format
 
 
 def build_context(
@@ -52,8 +52,23 @@ def ctx() -> ExpressionContext:
         ("%Y %Y %m", "yyyy yyyy MM"),
     ],
 )
-def test_format_date_codes(xls_format: str, expected: str) -> None:
-    assert format_date_codes(xls_format) == expected
+def test_convert_date_format(xls_format: str, expected: str) -> None:
+    assert convert_date_format(xls_format) == expected
+
+
+@pytest.mark.parametrize(
+    ["xls_format", "expected"],
+    [
+        ("%Y-%m-%d %H:%M:%S", "yyyy-MM-dd HH:mm:ss"),
+        ("%y/%n/%e %h:%M", "yy/M/d H:mm"),
+        ("%a, %b %d %H:%M:%S.%3", "ddd, MMM dd HH:mm:ss.zzz"),
+        ("DateTime: %Y_%m_%dT%H%M%S", "DateTime: yyyy_MM_ddTHHmmss"),
+        ("plain-text", "plain-text"),
+        ("%H %H %M", "HH HH mm"),
+    ],
+)
+def test_convert_datetime_format(xls_format: str, expected: str) -> None:
+    assert convert_datetime_format(xls_format) == expected
 
 
 @pytest.mark.parametrize(

@@ -11,6 +11,7 @@ from xlsform2qgis.expressions.tokenizer import (
     tokenize_expression,
     tokenize_template,
 )
+from xlsform2qgis.expressions.utils import convert_date_format, convert_datetime_format
 
 
 class AstNode:
@@ -271,10 +272,15 @@ if(
     "decimal-date-time": FunctionSpec(1, None),
     "date": FunctionSpec(1, None),
     "decimal-time": FunctionSpec(1, None),
-    # TODO @suricactus: implement https://docs.getodk.org/form-operators-functions/#format-date
-    "format-date": FunctionSpec(2, None),
-    # TODO @suricactus: implement https://docs.getodk.org/form-operators-functions/#format-date-time
-    "format-date-time": FunctionSpec(2, None),
+    "format-date": FunctionSpec(
+        2,
+        lambda date, fmt: f"format_date(to_date({date}), {convert_date_format(fmt)})",
+    ),
+    "format-date-time": FunctionSpec(
+        2,
+        lambda date,
+        fmt: f"format_date(to_datetime({date}), {convert_datetime_format(fmt)})",
+    ),
     "area": FunctionSpec(1, "area({1})"),
     # TODO @suricactus: implement https://docs.getodk.org/form-operators-functions/#distance
     "distance": FunctionSpec((1, None), None),
@@ -488,7 +494,7 @@ class _ExpressionParser:
 
             raise AssertionError("Unexpected token", token.start)
 
-        if not elements:
+        if not elements:  # pragma: no cover
             return Literal("", "", LiteralType.EMPTY)
 
         return Template(elements)

@@ -43,24 +43,6 @@ DOUBLE_QUOTE = '"'
 SINGLE_QUOTE = "'"
 
 
-def format_date_codes(xlsform_format: str) -> str:
-    conversion_map = {
-        r"%Y": "yyyy",
-        r"%y": "yy",
-        r"%m": "MM",
-        r"%n": "M",
-        r"%b": "MMM",
-        r"%d": "dd",
-        r"%e": "d",
-        r"%a": "ddd",
-    }
-
-    for xls_code, qgis_code in conversion_map.items():
-        xlsform_format = xlsform_format.replace(xls_code, qgis_code)
-
-    return xlsform_format
-
-
 class Expression:
     def __init__(
         self,
