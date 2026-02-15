@@ -289,7 +289,7 @@ if(
     "randomize": FunctionSpec((1, 2), "array_get({1}, rand(0, array_length({1}) - 1))"),
     "uuid": FunctionSpec(
         (0, 1),
-        lambda *args: "uuid(format:='WithoutBraces'))"
+        lambda *args: "uuid(format:='WithoutBraces')"
         if len(args) == 1
         else "substr(repeat(uuid(format:='WithoutBraces'), ceil({1} / 32)), 1, {1})",
     ),
