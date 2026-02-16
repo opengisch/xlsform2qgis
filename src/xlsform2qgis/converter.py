@@ -6,7 +6,7 @@ from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, cast
 
 from json2qgis.generate import (
     generate_field_def,
@@ -184,7 +184,7 @@ class ParsedSheet:
         if not self.layer.isValid():
             raise ValueError(f"Failed to load layer from: {xlsform_filename}")
 
-        fields_names = self.layer.fields().names()
+        fields_names: list[str | QVariant] = self.layer.fields().names()
 
         # if the first line in the xlsform is empty
         if fields_names[0] == "Field1":
@@ -200,7 +200,14 @@ class ParsedSheet:
             raise ValueError("Sheet must have at least 2 columns: 'type', 'name'")
 
         for index, field_name in enumerate(fields_names):
-            self.indices[field_name.lower()] = index
+            if isinstance(field_name, QVariant):
+                assert field_name.isNull()
+
+                continue
+
+            normalized_field_name = re.sub(r"\s+", "_", str(field_name).strip().lower())
+
+            self.indices[normalized_field_name] = index
 
     def __iter__(self) -> Iterator[dict[str, Any]]:
         it = cast(Iterable, self.layer.getFeatures())
