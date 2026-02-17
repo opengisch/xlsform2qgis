@@ -1409,11 +1409,11 @@ def widget_datetime(ctx: WidgetContext) -> ParsedRow:
     row_type = ctx.row["type"].lower()
 
     if row_type == "date":
-        datetime_format = "YYYY-MM-DD"
+        datetime_format = "yyyy-MM-dd"
     elif row_type == "time":
         datetime_format = "HH:mm:ss"
     elif row_type == "datetime":
-        datetime_format = "YYYY-MM-DD HH:mm:ss"
+        datetime_format = "yyyy-MM-dd HH:mm:ss"
     else:
         raise ValueError(f"Unsupported xlsform type for date/time: {ctx.row['type']}")
 
