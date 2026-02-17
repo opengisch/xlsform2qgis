@@ -1406,11 +1406,13 @@ def widget_range(ctx: WidgetContext) -> ParsedRow:
 
 @register_type(["date", "time", "datetime"])
 def widget_datetime(ctx: WidgetContext) -> ParsedRow:
-    if ctx.row["type"] == "date":
+    row_type = ctx.row["type"].lower()
+
+    if row_type == "date":
         datetime_format = "YYYY-MM-DD"
-    elif ctx.row["type"] == "time":
+    elif row_type == "time":
         datetime_format = "HH:mm:ss"
-    elif ctx.row["type"] == "datetime":
+    elif row_type == "datetime":
         datetime_format = "YYYY-MM-DD HH:mm:ss"
     else:
         raise ValueError(f"Unsupported xlsform type for date/time: {ctx.row['type']}")
