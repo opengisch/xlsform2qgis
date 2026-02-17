@@ -214,7 +214,21 @@ class ParsedSheet:
 
                 continue
 
+            if field_name == f"Field{index + 1}":
+                logger.debug(
+                    f"Skipping default field name `{field_name}` at index {index} in sheet `{self.name}`!"
+                )
+
+                continue
+
             normalized_field_name = re.sub(r"\s+", "_", str(field_name).strip().lower())
+
+            if self.indices[normalized_field_name] != -1:
+                logger.warning(
+                    f"Column name `{normalized_field_name}` found both at index {self.indices[normalized_field_name]} and {index} in sheet `{self.name}`; will use the first occurrence!"
+                )
+
+                continue
 
             self.indices[normalized_field_name] = index
 
@@ -239,6 +253,18 @@ class ParsedSheet:
                             value = value.value()
 
                     row[col] = value
+
+            for col_name, col_idx in self.indices.items():
+                if col_idx == -1:
+                    continue
+
+                value = feat.attribute(col_idx)
+
+                if isinstance(value, QVariant):
+                    assert value.isNull()
+                    value = None
+
+                row[col_name] = value
 
             yield row
 
@@ -976,9 +1002,7 @@ class XlsFormConverter(QObject):
     def _get_choices_values(self) -> dict[str, list[ChoicesDef]]:
         assert self.choices_sheet
 
-        choices: dict[str, list[ChoicesDef]] = defaultdict(
-            lambda: [{"name": "", "label": ""}]
-        )
+        choices: dict[str, list[ChoicesDef]] = defaultdict(list)
 
         for idx, row in enumerate(self.choices_sheet, 1):
             last_list_name = None
@@ -998,12 +1022,27 @@ class XlsFormConverter(QObject):
             if last_list_name is not None and last_list_name != row["list_name"]:
                 assert last_list_name not in choices
 
-            choices[row["list_name"]].append(
-                {
-                    "name": row["name"],
-                    "label": row["label"],
-                }
-            )
+            choice_data: ChoicesDef = {
+                "name": str(row["name"]).strip(),
+                "label": self._get_label(row),
+            }
+
+            for col_name, col_value in row.items():
+                if col_name in ("name", "label", "list_name"):
+                    continue
+
+                if not col_name:
+                    logger.debug(
+                        self.tr(
+                            f"Empty value for `{col_name}` in choices at row {idx}, using empty string as default!"
+                        )
+                    )
+
+                    continue
+
+                choice_data[col_name] = col_value
+
+            choices[row["list_name"]].append(choice_data)
 
         return dict(choices)
 
@@ -1014,29 +1053,53 @@ class XlsFormConverter(QObject):
         for list_name, list_choices in choice_values_by_list_name.items():
             layer_id = build_choices_layer_id(list_name)
 
+            # The additional columns are most likely related to a single choice group,
+            # so we need to iterate over all rows for the given choice group and collect the columns that are non-empty.
+            columns_set = set()
+            for list_choices_row in list_choices:
+                for col_name, col_value in list_choices_row.items():
+                    if col_name in columns_set:
+                        continue
+
+                    if col_value is None:
+                        continue
+
+                    columns_set.add(col_name)
+
+            assert "name" in columns_set
+            assert "label" in columns_set
+
+            fields = []
+            for col_name in columns_set:
+                fields.append(
+                    generate_field_def(
+                        name=col_name,
+                        type="string",
+                        widget_type="TextEdit",
+                    ),
+                )
+
+            cleaned_list_choices = [{"name": "", "label": ""}]
+            for list_choices_row in list_choices:
+                cleaned_row = {}
+
+                for col_name in columns_set:
+                    cleaned_row[col_name] = list_choices_row[col_name]
+
+                cleaned_list_choices.append(cleaned_row)
+
             choices_layers.append(
                 generate_layer_def(
                     layer_id=layer_id,
                     name=layer_id,
                     crs="EPSG:4326",
-                    fields=[
-                        generate_field_def(
-                            name="name",
-                            type="string",
-                            widget_type="TextEdit",
-                        ),
-                        generate_field_def(
-                            name="label",
-                            type="string",
-                            widget_type="TextEdit",
-                        ),
-                    ],
+                    fields=fields,
                     is_private=True,
                     custom_properties={
                         "QFieldSync/cloud_action": "no_action",
                         "QFieldSync/action": "copy",
                     },
-                    data=list_choices,
+                    data=cleaned_list_choices,
                 )
             )
 
