@@ -266,6 +266,12 @@ class ParsedSheet:
 
                 row[col_name] = value
 
+            if not any(row.values()):
+                logger.debug(
+                    f"Skipping spreadsheet row with empty values at row index {idx} in sheet `{self.name}`!"
+                )
+                continue
+
             yield row
 
 
