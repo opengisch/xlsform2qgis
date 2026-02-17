@@ -1497,7 +1497,7 @@ def widget_select_from_file(ctx: WidgetContext) -> ParsedRow:
         ctx.row["choice_filter"] or "",
         ctx.row["name"],
     )
-    filter_expressions.append(choice_filter_expr.to_qgis())
+    filter_expressions.append(choice_filter_expr.to_qgis(use_current=True))
 
     if xlsform_type in ("select_multiple", "select_multiple_from_file"):
         allow_multi = True
