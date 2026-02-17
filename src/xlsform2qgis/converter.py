@@ -134,10 +134,19 @@ XLSFORM_COLS_BY_SHEET_NAME = {
 }
 
 
+class ParsedSheetRow(dict[str, Any]):
+    idx: int
+    """We add a magical `idx` attribute to help identify the row in error messages and create unique identifiers"""
+
+    def __init__(self, *args: Any, idx: int = -1, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.idx = idx
+
+
 @dataclass
 class WidgetContext:
     converter: "XlsFormConverter"
-    row: dict[str, Any]
+    row: ParsedSheetRow
 
 
 class ParsedRow:
@@ -209,16 +218,13 @@ class ParsedSheet:
 
             self.indices[normalized_field_name] = index
 
-    def __iter__(self) -> Iterator[dict[str, Any]]:
+    def __iter__(self) -> Iterator[ParsedSheetRow]:
         it = cast(Iterable, self.layer.getFeatures())
         for idx, feat in enumerate(it):
             if idx == 0 and self.skip_first_row:
                 continue
 
-            row: dict[str, Any] = {
-                # we add a magical `idx` field to help identify the row in error messages and create unique identifiers
-                "idx": idx,
-            }
+            row: ParsedSheetRow = ParsedSheetRow(idx=idx)
 
             for col in XLSFORM_COLS_BY_SHEET_NAME[self.name]:
                 if self.indices[col] == -1:
@@ -814,13 +820,13 @@ class XlsFormConverter(QObject):
             except Exception as err:
                 logger.error(
                     self.tr(
-                        f"Failed to parse row with type `{row['type']}` and name `{row['name']}` at row index {row['idx']}: {err}"
+                        f"Failed to parse row with type `{row['type']}` and name `{row['name']}` at row index {row.idx}: {err}"
                     )
                 )
 
                 self.error.emit(
                     self.tr(
-                        f"Failed to parse row with type `{row['type']}` and name `{row['name']}` at row index {row['idx']}: {err}"
+                        f"Failed to parse row with type `{row['type']}` and name `{row['name']}` at row index {row.idx}: {err}"
                     )
                 )
 
@@ -835,7 +841,7 @@ class XlsFormConverter(QObject):
             layer_def["geometry_type"] = geometry_type
 
     def _parse_form_row(
-        self, row: dict[str, Any]
+        self, row: ParsedSheetRow
     ) -> tuple[list[FieldDef], list[FormItemDef], GeometryType | None]:
         fields = []
         form_items = []
@@ -1492,7 +1498,7 @@ def widget_geometry(ctx: WidgetContext) -> ParsedRow:
 
 @register_type(["begin group", "begin_group"])
 def widget_begin_group(ctx: WidgetContext) -> ParsedRow:
-    container_id = f"item_container_{ctx.row['idx']}"
+    container_id = f"item_container_{ctx.row.idx}"
     label = strip_html(ctx.row["label"])
 
     return ParsedRow(
@@ -1514,7 +1520,7 @@ def widget_end_group(ctx: WidgetContext) -> ParsedRow:
 
 @register_type(["note"])
 def widget_note(ctx: WidgetContext) -> ParsedRow:
-    container_id = f"item_container_{ctx.row['idx']}"
+    container_id = f"item_container_{ctx.row.idx}"
     label_expr_str = strip_html(ctx.row["label"] or "")
     label_expr = ctx.converter.get_expression(
         label_expr_str, str(ctx.row["name"]), ParserType.TEMPLATE
@@ -1537,7 +1543,7 @@ def widget_note(ctx: WidgetContext) -> ParsedRow:
 
 @register_type(["begin repeat", "begin_repeat"])
 def widget_begin_repeat(ctx: WidgetContext) -> ParsedRow:
-    layer_id = f"layer_repeat_{ctx.row['idx']}"
+    layer_id = f"layer_repeat_{ctx.row.idx}"
     layer: WeakLayerDef = {
         "layer_id": layer_id,
         "name": f"repeat_{ctx.row['name']}",
@@ -1556,7 +1562,7 @@ def widget_begin_repeat(ctx: WidgetContext) -> ParsedRow:
         "is_private": True,
     }
 
-    relation_id = f"relation_{ctx.row['idx']}"
+    relation_id = f"relation_{ctx.row.idx}"
     relation = {
         "relation_id": relation_id,
         "name": relation_id,
