@@ -116,6 +116,11 @@ if(
     )
 
 
+def test_jr_choice_name_function_conversion(ctx) -> None:
+    expr = Expression("jr:choice-name(one, 'my-list')", ctx)
+    assert expr.to_qgis() == "One"
+
+
 def test_regex_function_conversion(ctx) -> None:
     expr = Expression("regex(${field}, '^[0-9]+$')", ctx)
     assert expr.to_qgis() == "regexp_match(\"field\", '^[0-9]+$')"

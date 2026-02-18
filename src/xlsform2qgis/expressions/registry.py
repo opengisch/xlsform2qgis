@@ -92,11 +92,11 @@ class FunctionSpec:
         return self.expression.format(*args)
 
 
-def indexed_repeat_args_count(count: int) -> bool:
+def _indexed_repeat_args_count(count: int) -> bool:
     return count in {3, 5, 7}
 
 
-def weighted_checklist_args_count(count: int) -> bool:
+def _weighted_checklist_args_count(count: int) -> bool:
     return count >= 4 and (count - 2) % 2 == 0
 
 
@@ -122,14 +122,9 @@ if(
     ),
     "selected-at": FunctionSpec(2, "coalesce(array_get({1}, {2}), '')"),
     "count-selected": FunctionSpec(1, "array_length({1})"),
-    # TODO @suricactus: implement https://docs.getodk.org/form-operators-functions/#jr-choice-name
-    "jr:choice-name": FunctionSpec(2, None),
-    "indexed-repeat": FunctionSpec(indexed_repeat_args_count, None),
+    "indexed-repeat": FunctionSpec(_indexed_repeat_args_count, None),
     "count": FunctionSpec(1, "array_length({1})"),
     "count-non-empty": FunctionSpec(1, "array_length({1}) - count_missing({1})"),
-    "sum": FunctionSpec(1, "array_sum({1})"),
-    "max": FunctionSpec(1, "array_max({1})"),
-    "min": FunctionSpec(1, "array_min({1})"),
     "regex": FunctionSpec(2, "regexp_match({1}, {2})"),
     "contains": FunctionSpec(2, "strpos({1}, {2}) > 0"),
     "starts-with": FunctionSpec(2, "left({1}, length({2})) = {2}"),
@@ -186,10 +181,14 @@ if(
     # TODO @suricactus: implement https://docs.getodk.org/form-operators-functions/#checklist
     "checklist": FunctionSpec((3, None), None),
     # TODO @suricactus: implement https://docs.getodk.org/form-operators-functions/#weighted-checklist
-    "weighted-checklist": FunctionSpec(weighted_checklist_args_count, None),
+    "weighted-checklist": FunctionSpec(_weighted_checklist_args_count, None),
     "true": FunctionSpec(0, "true"),
     "false": FunctionSpec(0, "false"),
 }
+
+
+def _args_to_placeholders(args) -> str:
+    return ", ".join(f"{{{i}}}" for i in range(1, len(args) + 1))
 
 
 def _to_args_count(params: list[int]) -> Callable[[int], bool] | int:
@@ -283,7 +282,12 @@ def register_function(
             if args_count is None
             else args_count
         )
+
         function_name = name or target.__name__.replace("_", "-")
+
+        assert function_name not in SUPPORTED_FUNCTIONS, (
+            f"Function {function_name} already registered!"
+        )
 
         SUPPORTED_FUNCTIONS[function_name] = FunctionSpec(
             effective_args_count,
@@ -309,7 +313,7 @@ def string_length(*args: str, ctx: ExpressionContext) -> str:
 
 @register_function(name="concat", args_count=(1, None))
 def concat(*args: str, ctx: ExpressionContext) -> str:
-    return "concat({})".format(", ".join(f"{{{i}}}" for i in range(1, len(args) + 1)))
+    return "concat({})".format(_args_to_placeholders(args))
 
 
 @register_function(name="format-date")
@@ -349,11 +353,7 @@ def uuid(*args: str, ctx: ExpressionContext) -> str:
     if not args:
         return "uuid(format:='WithoutBraces')"
 
-    return (
-        "substr(repeat(uuid(format:='WithoutBraces'), ceil({0} / 32)), 1, {0})".format(
-            args[0]
-        )
-    )
+    return "substr(repeat(uuid(format:='WithoutBraces'), ceil({1} / 32)), 1, {1})"
 
 
 @register_function(name="jr:choice-name")
@@ -366,12 +366,25 @@ def jr_choice_name(choice_value: str, list_name: str, ctx: ExpressionContext) ->
         )
 
     for choice in ctx.choices_by_list[list_name]:
+        assert "name" in choice
+        assert "label" in choice
+
         if choice["name"] == choice_value:
             return choice["label"]
 
     raise ValueError(f"Value `{choice_value}` not found in {list_name}!")
 
 
-# @register_function(name="max")
-# @register_function(name="min")
-# @register_function(name="version")
+@register_function(name="min", args_count=(1, None))
+def min(*args: str, ctx: ExpressionContext) -> str:
+    return "min({})".format(_args_to_placeholders(args))
+
+
+@register_function(name="max", args_count=(1, None))
+def max(*args: str, ctx: ExpressionContext) -> str:
+    return "max({})".format(_args_to_placeholders(args))
+
+
+@register_function(name="sum", args_count=(1, None))
+def sum(*args: str, ctx: ExpressionContext) -> str:
+    return "sum({})".format(_args_to_placeholders(args))

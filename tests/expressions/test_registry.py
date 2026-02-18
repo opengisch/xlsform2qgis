@@ -1,5 +1,7 @@
 from unittest.mock import MagicMock
 
+import pytest
+
 from xlsform2qgis.expressions.registry import SUPPORTED_FUNCTIONS, register_function
 
 
@@ -47,3 +49,23 @@ def test_builtin_specs_store_expected_args_count():
     assert SUPPORTED_FUNCTIONS["regex"].expected_args_count == 2
     assert SUPPORTED_FUNCTIONS["substr"].expected_args_count == (2, 3)
     assert callable(SUPPORTED_FUNCTIONS["indexed-repeat"].expected_args_count)
+
+
+def test_register_function_duplicate_name_raises_assertion_error():
+    name = "tmp-registry-duplicate"
+
+    try:
+
+        @register_function(name=name)
+        def tmp_registry_duplicate_a(value: str, ctx) -> str:
+            return value
+
+        with pytest.raises(
+            AssertionError, match=f"Function {name} already registered!"
+        ):
+
+            @register_function(name=name)
+            def tmp_registry_duplicate_b(value: str, ctx) -> str:
+                return value
+    finally:
+        SUPPORTED_FUNCTIONS.pop(name, None)
