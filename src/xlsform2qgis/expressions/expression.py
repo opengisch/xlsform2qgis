@@ -32,6 +32,7 @@ class ExpressionContext:
     current_field: str
     calculate_expressions: dict[str, "Expression"]
     parser_type: ParserType
+    skip_expression_errors: bool = False
 
 
 class ExpressionError(Exception): ...
@@ -62,7 +63,7 @@ class Expression:
         else:
             self.ast = parse_expression(expression_str)
 
-    def to_qgis(
+    def _to_qgis(
         self,
         use_current: bool = False,
         expression_type: QgisRenderType = QgisRenderType.EXPRESSION,
@@ -241,6 +242,21 @@ class Expression:
             raise NotImplementedError(
                 f"Unknown parser type: {self.context.parser_type}"
             )
+
+    def to_qgis(
+        self,
+        use_current: bool = False,
+        expression_type: QgisRenderType = QgisRenderType.EXPRESSION,
+    ):
+        try:
+            return self._to_qgis(
+                use_current=use_current, expression_type=expression_type
+            )
+        except Exception:
+            if self.context.skip_expression_errors:
+                return ""
+
+            raise
 
     def is_str(self) -> bool:
         if isinstance(self.ast, Template) and all(

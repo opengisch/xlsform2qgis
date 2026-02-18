@@ -93,6 +93,26 @@ class Template(AstNode):
     elements: list[AstNode]
 
 
+def pulldata_impl(func_name: str, *args: str) -> str:
+    assert func_name == "pulldata"
+
+    if args[0] == "'@geopoint'":
+        assert len(args) in (3, 4, 5)
+
+        looking_for = args[2].strip().lower()
+
+        if looking_for == "'accuracy'":
+            return "@position_horizontal_accuracy"
+        elif looking_for == "'x'":
+            return "$x"
+        elif looking_for == "'y'":
+            return "$y"
+
+    raise ParseError(
+        f"Unsupported implementation of {func_name} with parameters {args} in QGIS expressions!"
+    )
+
+
 class ParseError(Exception):
     message: str
     position: int | None = None
@@ -306,7 +326,7 @@ if(
     "true": FunctionSpec(0, "true"),
     "false": FunctionSpec(0, "false"),
     # TODO @suricactus: implement https://xlsform.org/en/#how-to-pull-data-from-csv
-    "pulldata": FunctionSpec(4, None),
+    "pulldata": FunctionSpec((3, 5), pulldata_impl),
 }
 """Mapping of supported xlsform function names and the expected number of arguments as well as their QGIS expression equivalents."""
 
