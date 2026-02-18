@@ -9,6 +9,7 @@ from json2qgis.generate import (
 )
 
 from xlsform2qgis.converter import (
+    ParsedSheetRow,
     XlsFormConverter,
     generate_uuid_field_def,
     parse_xlsform_sheets,
@@ -22,19 +23,12 @@ def format_selected_expr(field_name: str, value: str) -> str:
     return expression.format("selected", f'"{field_name}"', f"'{value}'")
 
 
-def counter():
-    global_counter = 0
-    while True:
-        yield global_counter
-        global_counter += 1
-
-
-survey_row_counter = counter()
+def to_parsed_sheet_rows(rows: list[dict[str, str]]) -> list[ParsedSheetRow]:
+    return [ParsedSheetRow(**row, idx=i) for i, row in enumerate(rows)]
 
 
 def generate_survey_row(**kwargs):
     return {
-        "idx": next(survey_row_counter),
         "type": "",
         "name": "",
         "label": "",
@@ -67,33 +61,27 @@ def converter():
     )
 
 
-@pytest.fixture(autouse=True)
-def run_around_tests():
-    # Code that runs before each test
-    global survey_row_counter
-    survey_row_counter = counter()
-    yield
-
-
 class TestConverter:
     def test_get_choices_values(self, converter: XlsFormConverter):
-        converter.choices_sheet.__iter__.return_value = [  # type: ignore
-            {
-                "list_name": "list_001",
-                "name": "value_001_001",
-                "label": "label_001_001",
-            },
-            {
-                "list_name": "list_001",
-                "name": "value_001_002",
-                "label": "label_001_002",
-            },
-            {
-                "list_name": "list_002",
-                "name": "value_002_001",
-                "label": "label_002_001",
-            },
-        ]
+        converter.choices_sheet.__iter__.return_value = to_parsed_sheet_rows(  # type: ignore
+            [
+                {
+                    "list_name": "list_001",
+                    "name": "value_001_001",
+                    "label": "label_001_001",
+                },
+                {
+                    "list_name": "list_001",
+                    "name": "value_001_002",
+                    "label": "label_001_002",
+                },
+                {
+                    "list_name": "list_002",
+                    "name": "value_002_001",
+                    "label": "label_002_001",
+                },
+            ]
+        )
 
         choices_values = converter._get_choices_values()
 
@@ -125,23 +113,25 @@ class TestConverter:
         }
 
     def test_get_choices_layers(self, converter):
-        converter.choices_sheet.__iter__.return_value = [
-            {
-                "list_name": "list_001",
-                "name": "value_001_001",
-                "label": "label_001_001",
-            },
-            {
-                "list_name": "list_001",
-                "name": "value_001_002",
-                "label": "label_001_002",
-            },
-            {
-                "list_name": "list_002",
-                "name": "value_002_001",
-                "label": "label_002_001",
-            },
-        ]
+        converter.choices_sheet.__iter__.return_value = to_parsed_sheet_rows(
+            [
+                {
+                    "list_name": "list_001",
+                    "name": "value_001_001",
+                    "label": "label_001_001",
+                },
+                {
+                    "list_name": "list_001",
+                    "name": "value_001_002",
+                    "label": "label_001_002",
+                },
+                {
+                    "list_name": "list_002",
+                    "name": "value_002_001",
+                    "label": "label_002_001",
+                },
+            ]
+        )
 
         choices_values = converter._get_choices_values()
         choices_layers = converter._get_choices_layers()
@@ -228,7 +218,7 @@ class TestConverter:
 
         # simulate there is a new group in the survey sheet
 
-        converter.parent_ids.append("parent_id_here")
+        converter._container_ids.append("parent_id_here")
 
         assert converter.get_form_group_type() == "group_box"
 
@@ -250,18 +240,20 @@ class TestConverter:
         assert converter.get_form_group_type() == "group_box"
 
         # simulate there is a new group in the survey sheet
-        converter.parent_ids.append("parent_id_here")
+        converter._container_ids.append("parent_id_here")
 
         assert converter.get_form_group_type() == "tab"
 
     def test_xlsform_with_text_field(self, converter):
-        converter.survey_sheet.__iter__.return_value = [
-            generate_survey_row(
-                type="text",
-                name="field_001",
-                label="Field 001",
-            )
-        ]
+        converter.survey_sheet.__iter__.return_value = to_parsed_sheet_rows(
+            [
+                generate_survey_row(
+                    type="text",
+                    name="field_001",
+                    label="Field 001",
+                )
+            ]
+        )
 
         converter.convert()
 
@@ -299,29 +291,32 @@ class TestConverter:
         )
 
     def test_xlsform_label(self, converter):
-        converter.survey_sheet.__iter__.return_value = [
-            generate_survey_row(
-                type="text",
-                name="field_001",
-            ),
-            generate_survey_row(
-                type="text",
-                name="field_002",
-                label="Field 002",
-            ),
-            generate_survey_row(
-                **{
-                    "type": "text",
-                    "name": "field_003",
-                    "label": "Field 003",
-                    "label::english": "Field English 003",
-                }
-            ),
-        ]
-        converter.settings_sheet.__iter__.return_value = [
-            {"default_language": "English"}
-        ]
+        converter.survey_sheet.__iter__.return_value = to_parsed_sheet_rows(
+            [
+                generate_survey_row(
+                    type="text",
+                    name="field_001",
+                ),
+                generate_survey_row(
+                    type="text",
+                    name="field_002",
+                    label="Field 002",
+                ),
+                generate_survey_row(
+                    **{
+                        "type": "text",
+                        "name": "field_003",
+                        "label": "Field 003",
+                        "label::english": "Field English 003",
+                    }
+                ),
+            ]
+        )
+        converter.settings_sheet.__iter__.return_value = to_parsed_sheet_rows(
+            [{"default_language": "English"}]
+        )
 
+        converter._settings = converter._get_settings()
         converter.convert()
 
         assert len(converter.layers) == 1
@@ -355,21 +350,23 @@ class TestConverter:
         )
 
     def test_xlsform_with_group(self, converter):
-        converter.survey_sheet.__iter__.return_value = [
-            generate_survey_row(
-                type="begin group",
-                name="group_001",
-                label="Group 001",
-            ),
-            generate_survey_row(
-                type="text",
-                name="field_001",
-                label="Field 001",
-            ),
-            generate_survey_row(
-                type="end group",
-            ),
-        ]
+        converter.survey_sheet.__iter__.return_value = to_parsed_sheet_rows(
+            [
+                generate_survey_row(
+                    type="begin group",
+                    name="group_001",
+                    label="Group 001",
+                ),
+                generate_survey_row(
+                    type="text",
+                    name="field_001",
+                    label="Field 001",
+                ),
+                generate_survey_row(
+                    type="end group",
+                ),
+            ]
+        )
 
         converter.convert()
 
@@ -413,29 +410,31 @@ class TestConverter:
         )
 
     def test_xlsform_with_group_nesting(self, converter):
-        converter.survey_sheet.__iter__.return_value = [
-            generate_survey_row(
-                type="begin group",
-                name="group_001",
-                label="Group 001",
-            ),
-            generate_survey_row(
-                type="begin group",
-                name="group_001_001",
-                label="Group 001_001",
-            ),
-            generate_survey_row(
-                type="text",
-                name="field_001_001",
-                label="Field 001_001",
-            ),
-            generate_survey_row(
-                type="end group",
-            ),
-            generate_survey_row(
-                type="end group",
-            ),
-        ]
+        converter.survey_sheet.__iter__.return_value = to_parsed_sheet_rows(
+            [
+                generate_survey_row(
+                    type="begin group",
+                    name="group_001",
+                    label="Group 001",
+                ),
+                generate_survey_row(
+                    type="begin group",
+                    name="group_001_001",
+                    label="Group 001_001",
+                ),
+                generate_survey_row(
+                    type="text",
+                    name="field_001_001",
+                    label="Field 001_001",
+                ),
+                generate_survey_row(
+                    type="end group",
+                ),
+                generate_survey_row(
+                    type="end group",
+                ),
+            ]
+        )
 
         converter.convert()
 
@@ -485,34 +484,36 @@ class TestConverter:
         )
 
     def test_xlsform_with_repeat(self, converter):
-        converter.survey_sheet.__iter__.return_value = [
-            generate_survey_row(
-                type="begin repeat",
-                name="group_001",
-                label="Group 001",
-            ),
-            generate_survey_row(
-                type="begin group",
-                name="group_001_001",
-                label="Group 001_001",
-            ),
-            generate_survey_row(
-                type="text",
-                name="field_001",
-                label="Field 001",
-            ),
-            generate_survey_row(
-                type="end group",
-            ),
-            generate_survey_row(
-                type="end repeat",
-            ),
-            generate_survey_row(
-                type="integer",
-                name="field_002",
-                label="Field 002",
-            ),
-        ]
+        converter.survey_sheet.__iter__.return_value = to_parsed_sheet_rows(
+            [
+                generate_survey_row(
+                    type="begin repeat",
+                    name="group_001",
+                    label="Group 001",
+                ),
+                generate_survey_row(
+                    type="begin group",
+                    name="group_001_001",
+                    label="Group 001_001",
+                ),
+                generate_survey_row(
+                    type="text",
+                    name="field_001",
+                    label="Field 001",
+                ),
+                generate_survey_row(
+                    type="end group",
+                ),
+                generate_survey_row(
+                    type="end repeat",
+                ),
+                generate_survey_row(
+                    type="integer",
+                    name="field_002",
+                    label="Field 002",
+                ),
+            ]
+        )
 
         converter.convert()
 
@@ -530,12 +531,14 @@ class TestConverter:
         assert repeat_layer_1["fields"][2]["name"] == "field_001"
 
     def test_xlsform_geometry(self, converter):
-        converter.survey_sheet.__iter__.return_value = [
-            generate_survey_row(
-                type="start-geoshape",
-                name="start-geoshape_001",
-            ),
-        ]
+        converter.survey_sheet.__iter__.return_value = to_parsed_sheet_rows(
+            [
+                generate_survey_row(
+                    type="start-geoshape",
+                    name="start-geoshape_001",
+                ),
+            ]
+        )
 
         converter.convert()
 
@@ -546,10 +549,13 @@ class TestConverter:
         assert survey_layer["geometry_type"] == "Polygon"
 
     def test_xlsform_display_expression(self, converter):
-        converter.settings_sheet.__iter__.return_value = [
-            {"instance_name": r"concat(${lname}, '-', ${fname}, '-', uuid())"},
-        ]
+        converter.settings_sheet.__iter__.return_value = to_parsed_sheet_rows(
+            [
+                {"instance_name": r"concat(${lname}, '-', ${fname}, '-', uuid())"},
+            ]
+        )
 
+        converter._settings = converter._get_settings()
         converter.convert()
 
         assert converter._settings
@@ -559,7 +565,7 @@ class TestConverter:
         )
         assert (
             converter.get_display_expression(converter._settings["instance_name"])
-            == "concat(\"lname\", '-', \"fname\", '-', uuid(format:='WithoutBraces')))"
+            == "concat(\"lname\", '-', \"fname\", '-', uuid(format:='WithoutBraces'))"
         )
 
     @pytest.fixture
@@ -766,7 +772,7 @@ class TestConverter:
             type="string",
             name="employee_total",
             alias="",
-            widget_type="TextEdit",
+            widget_type="Hidden",
             default_value='"part_employees" + "full_employees"',
             set_default_value_on_update=True,
         )

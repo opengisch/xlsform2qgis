@@ -374,6 +374,8 @@ class XlsFormConverter(QObject):
         self._skip_failed_expressions = skip_failed_expressions
         self._calculate_expressions = {}
 
+        self._settings = self._get_settings()
+
         self.layers = []
         self.layer_tree = []
         self.relations = []
@@ -755,8 +757,6 @@ class XlsFormConverter(QObject):
     def to_json(self) -> dict[str, Any]:
         self.convert()
 
-        settings = self._get_settings()
-
         return {
             "project": {
                 "custom_properties": {
@@ -769,7 +769,7 @@ class XlsFormConverter(QObject):
                 #     "custom_crs": "EPSG:4326",
                 # },
                 "author": "Ivan",
-                "title": settings["form_title"],
+                "title": self._settings["form_title"],
             },
             "layers": self.layers,
             "layer_tree": self.layer_tree,
@@ -782,8 +782,6 @@ class XlsFormConverter(QObject):
         assert self.survey_sheet
         assert self.settings_sheet
         assert self.choices_sheet
-
-        self._settings = self._get_settings()
 
         self.layers.extend(self._get_choices_layers())
 
@@ -1055,15 +1053,9 @@ class XlsFormConverter(QObject):
 
             choices[row["list_name"]].append(choice_data)
 
-        return dict(choices)
+        cleaned_choices = {}
 
-    def _get_choices_layers(self) -> list[LayerDef]:
-        choices_layers: list[LayerDef] = []
-        choice_values_by_list_name = self._get_choices_values()
-
-        for list_name, list_choices in choice_values_by_list_name.items():
-            layer_id = build_choices_layer_id(list_name)
-
+        for list_name, list_choices in choices.items():
             # The additional columns are most likely related to a single choice group,
             # so we need to iterate over all rows for the given choice group and collect the columns that are non-empty.
             columns_set = set()
@@ -1080,17 +1072,8 @@ class XlsFormConverter(QObject):
             assert "name" in columns_set
             assert "label" in columns_set
 
-            fields = []
-            for col_name in columns_set:
-                fields.append(
-                    generate_field_def(
-                        name=col_name,
-                        type="string",
-                        widget_type="TextEdit",
-                    ),
-                )
-
             cleaned_list_choices = [{"name": "", "label": ""}]
+
             for list_choices_row in list_choices:
                 cleaned_row = {}
 
@@ -1098,6 +1081,27 @@ class XlsFormConverter(QObject):
                     cleaned_row[col_name] = list_choices_row[col_name]
 
                 cleaned_list_choices.append(cleaned_row)
+
+            cleaned_choices[list_name] = cleaned_list_choices
+
+        return cleaned_choices
+
+    def _get_choices_layers(self) -> list[LayerDef]:
+        choices_layers: list[LayerDef] = []
+        choice_values_by_list_name = self._get_choices_values()
+
+        for list_name, list_choices in choice_values_by_list_name.items():
+            layer_id = build_choices_layer_id(list_name)
+
+            fields = []
+            for col_name in list_choices[0].keys():
+                fields.append(
+                    generate_field_def(
+                        name=col_name,
+                        type="string",
+                        widget_type="TextEdit",
+                    ),
+                )
 
             choices_layers.append(
                 generate_layer_def(
@@ -1110,7 +1114,7 @@ class XlsFormConverter(QObject):
                         "QFieldSync/cloud_action": "no_action",
                         "QFieldSync/action": "copy",
                     },
-                    data=cleaned_list_choices,
+                    data=list_choices,
                 )
             )
 
