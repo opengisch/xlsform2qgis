@@ -827,6 +827,13 @@ class XlsFormConverter(QObject):
 
                 assert layer_def is not None
 
+                if not row["type"]:
+                    logger.debug(
+                        f"Skipping row with empty `type` at row index {row.idx}!"
+                    )
+
+                    continue
+
                 row_field_defs, row_form_item_defs, row_geometry_type = (
                     self._parse_form_row(row)
                 )
