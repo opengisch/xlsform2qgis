@@ -131,11 +131,13 @@ class TestTokenizerCurrent:
         assert [t.type for t in tokens] == [
             TokenType.CURRENT,
             TokenType.OPERATOR,
+            TokenType.OPERATOR,
             TokenType.NUMBER,
         ]
         assert tokens[0].value == "."
         assert tokens[1].value == ">"
-        assert tokens[2].value == "-1"
+        assert tokens[2].value == "-"
+        assert tokens[3].value == "1"
 
 
 class TestTokenizerOperators:

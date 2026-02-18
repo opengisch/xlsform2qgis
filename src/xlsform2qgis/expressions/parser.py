@@ -1,17 +1,15 @@
 from __future__ import annotations
 
-import re
-from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 
+from xlsform2qgis.expressions.registry import SUPPORTED_FUNCTIONS
 from xlsform2qgis.expressions.tokenizer import (
     Token,
     TokenType,
     tokenize_expression,
     tokenize_template,
 )
-from xlsform2qgis.expressions.utils import convert_date_format, convert_datetime_format
 
 
 class AstNode:
@@ -93,26 +91,6 @@ class Template(AstNode):
     elements: list[AstNode]
 
 
-def pulldata_impl(func_name: str, *args: str) -> str:
-    assert func_name == "pulldata"
-
-    if args[0] == "'@geopoint'":
-        assert len(args) in (3, 4, 5)
-
-        looking_for = args[2].strip().lower()
-
-        if looking_for == "'accuracy'":
-            return "@position_horizontal_accuracy"
-        elif looking_for == "'x'":
-            return "$x"
-        elif looking_for == "'y'":
-            return "$y"
-
-    raise ParseError(
-        f"Unsupported implementation of {func_name} with parameters {args} in QGIS expressions!"
-    )
-
-
 class ParseError(Exception):
     message: str
     position: int | None = None
@@ -137,198 +115,6 @@ class ParseError(Exception):
             msg += f" at position {self.position}"
 
         return msg
-
-
-class FunctionSpec:
-    expression: str | Callable[..., str] | None
-
-    _validate_function: Callable[[int], bool]
-
-    def __init__(
-        self,
-        args_count: Callable | int | tuple[int, int | None],
-        qgis_expression: str | Callable[..., str] | None,
-    ) -> None:
-        if callable(args_count):
-            self._validate_function = args_count
-        elif isinstance(args_count, tuple):
-            min_args, max_args = args_count
-            self._validate_function = lambda c: self._validate_arg_count(
-                c, min_args, max_args
-            )
-        elif isinstance(args_count, int):
-            min_args, max_args = args_count, args_count
-            self._validate_function = lambda c: self._validate_arg_count(
-                c, min_args, max_args
-            )
-        else:
-            raise ValueError(
-                f"Invalid argument for `FunctionSpec`, expected int, tuple[int, int], or callable, got {type(args_count)}"
-            )
-
-        self.expression = qgis_expression
-
-    def _validate_arg_count(
-        self, count: int, min_args: int, max_args: int | None
-    ) -> bool:
-        if count < min_args:
-            return False
-
-        if max_args is not None and count > max_args:
-            return False
-
-        return True
-
-    def validate(self, count: int) -> bool:
-        return self._validate_function(count)
-
-    def args_count(self) -> int:
-        if callable(self.expression):
-            return -1
-
-        expression = self.expression or ""
-
-        return len(re.findall(r"(?<!\{)\{(\d+)\}(?!\})", expression))
-
-    def format(self, /, *args: str) -> str:
-        if self.expression is None:
-            raise ValueError("Cannot format expression for unsupported function")
-
-        args_count = self.args_count()
-
-        if callable(self.expression):
-            assert args_count == -1
-
-            return self.expression(*args).format(*args)
-
-        if len(args) > args_count + 1:
-            raise ValueError(
-                f"Expected at most {args_count} arguments, got {len(args)}"
-            )
-
-        # add nulls for all the missing params
-        while len(args) < args_count:
-            args += ("NULL",)
-
-        return self.expression.format(*args)
-
-
-SUPPORTED_FUNCTIONS: dict[str, FunctionSpec] = {
-    "if": FunctionSpec(3, "if({1}, {2}, {3})"),
-    "position": FunctionSpec(1, None),
-    "once": FunctionSpec(1, None),
-    "selected": FunctionSpec(
-        2,
-        # Because we will use `str().format()`, we need to escape the curly braces in the QGIS expression by doubling them, and we also need to use {1}, {2} etc. as placeholders for the arguments
-        """
-if(
-    /* guess whether the value is a multiple selection. Assumptions: values does not contain `,`, `}}` or `{{` (comma or curly brace) characters */
-    rtrim(ltrim( {1}, '{{'), '}}' ) = {1},
-    /* if it is not a multiple selection, just check for equality */
-    {1} = {2},
-    /* if it is a multiple selection, check if the selected value is in the array of selected values */
-    array_contains( array_foreach( string_to_array( rtrim(ltrim( {1}, '{{'), '}}' ), ',' ), substr(@element, 2, -1) ), {2} )
-)
-    """.strip(),
-    ),
-    "selected-at": FunctionSpec(2, "coalesce(array_get({1}, {2}), '')"),
-    "count-selected": FunctionSpec(1, "array_length({1})"),
-    # TODO @suricactus: implement https://docs.getodk.org/form-operators-functions/#jr-choice-name
-    "jr:choice-name": FunctionSpec(2, None),
-    "indexed-repeat": FunctionSpec(lambda c: c in {3, 5, 7}, None),
-    "count": FunctionSpec(1, "array_length({1})"),
-    "count-non-empty": FunctionSpec(1, "array_length({1}) - count_missing({1})"),
-    "sum": FunctionSpec(1, "array_sum({1})"),
-    "max": FunctionSpec(1, "array_max({1})"),
-    "min": FunctionSpec(1, "array_min({1})"),
-    "regex": FunctionSpec(2, "regexp_match({1}, {2})"),
-    "contains": FunctionSpec(2, "strpos({1}, {2}) > 0"),
-    "starts-with": FunctionSpec(2, "left({1}, length({2})) = {2}"),
-    "ends-with": FunctionSpec(2, "right({1}, length({2})) = {2}"),
-    "substr": FunctionSpec((2, 3), "substr({1}, {2} + 1, {3})"),
-    "substring-before": FunctionSpec(2, "substr({1}, 1, strpos({1}, {2}))"),
-    "substring-after": FunctionSpec(2, "substr({1}, strpos({1}, {2}) + 1)"),
-    "translate": FunctionSpec(
-        3,
-        "array_foreach(string_to_array({2}, ''), replace({1}, @element, coalesce(array_get(string_to_array({2}, ''), @counter), '')))",
-    ),
-    "string-length": FunctionSpec((0, 1), "length({1})"),
-    "normalize-space": FunctionSpec(1, "trim( regexp_replace( {1}, '\\s+', ' ') )"),
-    "concat": FunctionSpec(
-        (1, None),
-        lambda *args: "concat({})".format(
-            ", ".join(f"{{{i}}}" for i in range(1, len(args)))
-        ),
-    ),
-    "join": FunctionSpec(2, "array_to_string({1}, {2})"),
-    "boolean-from-string": FunctionSpec(1, "{1} == 'true' or {1} == '1'"),
-    "string": FunctionSpec(1, "to_string({1})"),
-    # TODO @suricactus: implement https://docs.getodk.org/form-operators-functions/#digest
-    "digest": FunctionSpec((2, 3), None),
-    "base64-decode": FunctionSpec(1, "from_base64({1})"),
-    # TODO @suricactus: implement https://docs.getodk.org/form-operators-functions/#extract-signed
-    "extract-signed": FunctionSpec(2, None),
-    "round": FunctionSpec(2, "round({1}, {2})"),
-    "int": FunctionSpec(1, "to_int({1})"),
-    "number": FunctionSpec(1, "to_real({1})"),
-    "pow": FunctionSpec(2, "{1} ^ {2}"),
-    "log": FunctionSpec(1, "ln({1})"),
-    "log10": FunctionSpec(1, "log({1})"),
-    "abs": FunctionSpec(1, "abs({1})"),
-    "sin": FunctionSpec(1, "sin({1})"),
-    "cos": FunctionSpec(1, "cos({1})"),
-    "tan": FunctionSpec(1, "tan({1})"),
-    "asin": FunctionSpec(1, "asin({1})"),
-    "acos": FunctionSpec(1, "acos({1})"),
-    "atan": FunctionSpec(1, "atan({1})"),
-    "atan2": FunctionSpec(2, "atan2({1}, {2})"),
-    "sqrt": FunctionSpec(1, "sqrt({1})"),
-    "exp": FunctionSpec(1, "exp({1})"),
-    "exp10": FunctionSpec(1, "10 ^ {1}"),
-    "pi": FunctionSpec(0, "pi()"),
-    "today": FunctionSpec(0, "format_date(now(), 'yyyy-MM-dd')"),
-    "now": FunctionSpec(0, "now()"),
-    # TODO @suricactus: implement https://docs.getodk.org/form-operators-functions/#converting-dates-and-time
-    "decimal-date-time": FunctionSpec(1, None),
-    "date": FunctionSpec(1, None),
-    "decimal-time": FunctionSpec(1, None),
-    "format-date": FunctionSpec(
-        2,
-        lambda _,
-        date,
-        fmt: f"format_date(to_date({date}), {convert_date_format(fmt)})",
-    ),
-    "format-date-time": FunctionSpec(
-        2,
-        lambda _,
-        date,
-        fmt: f"format_date(to_datetime({date}), {convert_datetime_format(fmt)})",
-    ),
-    "area": FunctionSpec(1, "area({1})"),
-    # TODO @suricactus: implement https://docs.getodk.org/form-operators-functions/#distance
-    "distance": FunctionSpec((1, None), None),
-    "geofence": FunctionSpec(2, "contains({2}, {1})"),
-    "random": FunctionSpec(0, "randf()"),
-    "randomize": FunctionSpec((1, 2), "array_get({1}, rand(0, array_length({1}) - 1))"),
-    "uuid": FunctionSpec(
-        (0, 1),
-        lambda *args: "uuid(format:='WithoutBraces')"
-        if len(args) == 1
-        else "substr(repeat(uuid(format:='WithoutBraces'), ceil({1} / 32)), 1, {1})",
-    ),
-    "boolean": FunctionSpec(1, "to_bool({1})"),
-    "not": FunctionSpec(1, "not {1}"),
-    "coalesce": FunctionSpec(2, "coalesce({1}, {2})"),
-    # TODO @suricactus: implement https://docs.getodk.org/form-operators-functions/#checklist
-    "checklist": FunctionSpec((3, None), None),
-    # TODO @suricactus: implement https://docs.getodk.org/form-operators-functions/#weighted-checklist
-    "weighted-checklist": FunctionSpec(lambda c: c >= 4 and (c - 2) % 2 == 0, None),
-    "true": FunctionSpec(0, "true"),
-    "false": FunctionSpec(0, "false"),
-    # TODO @suricactus: implement https://xlsform.org/en/#how-to-pull-data-from-csv
-    "pulldata": FunctionSpec((3, 5), pulldata_impl),
-}
-"""Mapping of supported xlsform function names and the expected number of arguments as well as their QGIS expression equivalents."""
 
 
 OPENING_BRACKET = "("
