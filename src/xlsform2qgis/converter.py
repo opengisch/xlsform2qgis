@@ -422,6 +422,7 @@ class XlsFormConverter(QObject):
             calculate_expressions=self._calculate_expressions,
             parser_type=parser_type,
             skip_expression_errors=self._skip_failed_expressions,
+            choices_by_list=self._get_choices_by_list(),
         )
 
     def get_expression(

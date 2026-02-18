@@ -2,6 +2,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import assert_never
 
+from json2qgis.type_defs import ChoicesDef
+
 from xlsform2qgis.converter_utils import strip_html
 from xlsform2qgis.expressions.parser import (
     SUPPORTED_FUNCTIONS,
@@ -20,6 +22,7 @@ from xlsform2qgis.expressions.parser import (
     parse_expression,
     parse_template,
 )
+from xlsform2qgis.expressions.utils import SINGLE_QUOTE, wrap_field
 
 
 class QgisRenderType(StrEnum):
@@ -32,6 +35,7 @@ class ExpressionContext:
     current_field: str
     calculate_expressions: dict[str, "Expression"]
     parser_type: ParserType
+    choices_by_list: dict[str, list[ChoicesDef]]
     skip_expression_errors: bool = False
 
 
@@ -40,8 +44,6 @@ class ExpressionError(Exception): ...
 
 TEMPLATE_START = "[% "
 TEMPLATE_END = " %]"
-DOUBLE_QUOTE = '"'
-SINGLE_QUOTE = "'"
 
 
 class Expression:
@@ -68,13 +70,6 @@ class Expression:
         use_current: bool = False,
         expression_type: QgisRenderType = QgisRenderType.EXPRESSION,
     ) -> str:
-        def wrap_field(field_name: str, quote_char: str = DOUBLE_QUOTE) -> str:
-            # QGIS uses double quotes to escape field names, but if the field name itself contains a double quote,
-            # we need to escape it by doubling it (e.g. field name `he"llo` would be escaped as `"he""llo"`
-            # Same goes for single quotes when used to wrap strings.
-            field_name = field_name.replace(quote_char, quote_char + quote_char)
-            return f"{quote_char}{field_name}{quote_char}"
-
         def get_field_value(field_name: str) -> str:
             if use_current:
                 return f"current_value({wrap_field(field_name, SINGLE_QUOTE)})"

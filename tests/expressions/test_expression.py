@@ -1,6 +1,7 @@
 import re
 
 import pytest
+from json2qgis.type_defs import ChoicesDef
 
 from xlsform2qgis.expressions.expression import (
     Expression,
@@ -15,6 +16,12 @@ def build_context(
     expressions: dict[str, str] | None = None,
     parser_type: ParserType = ParserType.EXPRESSION,
 ) -> ExpressionContext:
+    choices_by_list: dict[str, list[ChoicesDef]] = {
+        "my-list": [
+            {"name": "", "label": ""},
+            {"name": "one", "label": "One"},
+        ]
+    }
     context = ExpressionContext(
         current_field="field001",
         calculate_expressions={
@@ -24,10 +31,12 @@ def build_context(
                     current_field="calc_field",
                     calculate_expressions={},
                     parser_type=parser_type,
+                    choices_by_list=choices_by_list,
                 ),
             )
         },
         parser_type=parser_type,
+        choices_by_list=choices_by_list,
     )
     if expressions:
         for name, expr in expressions.items():
