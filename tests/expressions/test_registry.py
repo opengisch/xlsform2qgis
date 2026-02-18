@@ -2,7 +2,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from xlsform2qgis.expressions.registry import SUPPORTED_FUNCTIONS, register_function
+from xlsform2qgis.expressions.functions import SUPPORTED_FUNCTIONS, register_function
 
 
 def test_register_function_without_parentheses_infers_params():

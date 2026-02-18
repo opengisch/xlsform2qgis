@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
-from xlsform2qgis.expressions.registry import SUPPORTED_FUNCTIONS
+from xlsform2qgis.expressions.functions import SUPPORTED_FUNCTIONS
 from xlsform2qgis.expressions.tokenizer import (
     Token,
     TokenType,
