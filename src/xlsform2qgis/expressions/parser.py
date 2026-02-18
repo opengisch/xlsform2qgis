@@ -274,11 +274,14 @@ if(
     "decimal-time": FunctionSpec(1, None),
     "format-date": FunctionSpec(
         2,
-        lambda date, fmt: f"format_date(to_date({date}), {convert_date_format(fmt)})",
+        lambda _,
+        date,
+        fmt: f"format_date(to_date({date}), {convert_date_format(fmt)})",
     ),
     "format-date-time": FunctionSpec(
         2,
-        lambda date,
+        lambda _,
+        date,
         fmt: f"format_date(to_datetime({date}), {convert_datetime_format(fmt)})",
     ),
     "area": FunctionSpec(1, "area({1})"),
@@ -667,7 +670,9 @@ class _ExpressionParser:
 
         if not spec.validate(len(args)):
             raise ParseError(
-                "Invalid number of function arguments", callee_token.start, callee_token
+                f"Invalid number of function arguments, got {len(args)}",
+                callee_token.start,
+                callee_token,
             )
 
         if spec.expression is None:
