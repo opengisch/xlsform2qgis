@@ -1603,7 +1603,7 @@ def widget_end_group(ctx: WidgetContext) -> ParsedRow:
 @register_type(["note"])
 def widget_note(ctx: WidgetContext) -> ParsedRow:
     container_id = f"item_container_{ctx.row.idx}"
-    label_expr_str = strip_html(ctx.row["label"] or "")
+    label_expr_str = ctx.row["label"] or ""
     label_expr = ctx.converter.get_expression(
         label_expr_str, str(ctx.row["name"]), ParserType.TEMPLATE
     )
