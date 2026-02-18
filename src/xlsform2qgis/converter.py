@@ -79,8 +79,8 @@ def generate_uuid_field_def(**kwargs: Any) -> FieldDef:
 
 XLS_TYPES_MAP = {
     "integer": "integer",
-    "decimal": "double",
-    "range": "double",
+    "decimal": "real",
+    "range": "real",
     "date": "date",
     "today": "date",
     "time": "time",
