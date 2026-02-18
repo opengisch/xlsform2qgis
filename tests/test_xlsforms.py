@@ -62,7 +62,7 @@ def converter():
 
 
 class TestConverter:
-    def test_get_choices_values(self, converter: XlsFormConverter):
+    def test_get_choices_by_list(self, converter: XlsFormConverter):
         converter.choices_sheet.__iter__.return_value = to_parsed_sheet_rows(  # type: ignore
             [
                 {
@@ -83,9 +83,9 @@ class TestConverter:
             ]
         )
 
-        choices_values = converter._get_choices_values()
+        choices_by_list = converter._get_choices_by_list()
 
-        assert choices_values == {
+        assert choices_by_list == {
             "list_001": [
                 {
                     "name": "",
@@ -133,7 +133,7 @@ class TestConverter:
             ]
         )
 
-        choices_values = converter._get_choices_values()
+        choices_by_list = converter._get_choices_by_list()
         choices_layers = converter._get_choices_layers()
 
         assert choices_layers == [
@@ -149,7 +149,7 @@ class TestConverter:
                         "QFieldSync/cloud_action": "no_action",
                     },
                     "is_private": True,
-                    "data": choices_values.get("list_001", []),
+                    "data": choices_by_list.get("list_001", []),
                     "fields": [
                         generate_field_def(
                             **{
@@ -182,7 +182,7 @@ class TestConverter:
                         "QFieldSync/cloud_action": "no_action",
                     },
                     "is_private": True,
-                    "data": choices_values.get("list_002", []),
+                    "data": choices_by_list.get("list_002", []),
                     "fields": [
                         generate_field_def(
                             **{

@@ -1008,7 +1008,48 @@ class XlsFormConverter(QObject):
 
         return fields, form_items, geometry_type
 
-    def _get_choices_values(self) -> dict[str, list[ChoicesDef]]:
+    def _get_choices_columns(self, list_choices: list[ChoicesDef]) -> list[str]:
+        # The additional columns are most likely related to a single choice group,
+        # so we need to iterate over all rows for the given choice group and collect the columns that are non-empty.
+        columns_set = set()
+        for list_choices_row in list_choices:
+            for col_name, col_value in list_choices_row.items():
+                if col_name in columns_set:
+                    continue
+
+                if col_value is None:
+                    continue
+
+                columns_set.add(col_name)
+
+        columns_ordered = ["name", "label"] + sorted(
+            col_name for col_name in columns_set if col_name not in {"name", "label"}
+        )
+
+        assert "name" in columns_set
+        assert "label" in columns_set
+
+        return columns_ordered
+
+    def _get_choices_record(
+        self, columns: list[str], raw_choice_record: ChoicesDef | None
+    ) -> ChoicesDef:
+        record: ChoicesDef = {}
+
+        for column in columns:
+            if raw_choice_record is None:
+                if column in ("name", "label"):
+                    value = ""
+                else:
+                    value = None
+            else:
+                value = raw_choice_record[column]
+
+            record[column] = value
+
+        return record
+
+    def _get_choices_by_list(self) -> dict[str, list[ChoicesDef]]:
         assert self.choices_sheet
 
         choices: dict[str, list[ChoicesDef]] = defaultdict(list)
@@ -1053,42 +1094,33 @@ class XlsFormConverter(QObject):
 
             choices[row["list_name"]].append(choice_data)
 
-        cleaned_choices = {}
+        cleaned_choices_by_list = {}
 
-        for list_name, list_choices in choices.items():
-            # The additional columns are most likely related to a single choice group,
-            # so we need to iterate over all rows for the given choice group and collect the columns that are non-empty.
-            columns_set = set()
-            for list_choices_row in list_choices:
-                for col_name, col_value in list_choices_row.items():
-                    if col_name in columns_set:
-                        continue
+        for list_name, raw_choice_records in choices.items():
+            columns = self._get_choices_columns(raw_choice_records)
 
-                    if col_value is None:
-                        continue
+            cleaned_choices = [
+                # We always add an empty option
+                self._get_choices_record(columns, None),
+            ]
 
-                    columns_set.add(col_name)
-
-            assert "name" in columns_set
-            assert "label" in columns_set
-
-            cleaned_list_choices = [{"name": "", "label": ""}]
-
-            for list_choices_row in list_choices:
+            for raw_choice_record in raw_choice_records:
                 cleaned_row = {}
 
-                for col_name in columns_set:
-                    cleaned_row[col_name] = list_choices_row[col_name]
+                for col_name in columns:
+                    cleaned_row[col_name] = raw_choice_record[col_name]
 
-                cleaned_list_choices.append(cleaned_row)
+                cleaned_choices.append(
+                    self._get_choices_record(columns, raw_choice_record)
+                )
 
-            cleaned_choices[list_name] = cleaned_list_choices
+            cleaned_choices_by_list[list_name] = cleaned_choices
 
-        return cleaned_choices
+        return cleaned_choices_by_list
 
     def _get_choices_layers(self) -> list[LayerDef]:
         choices_layers: list[LayerDef] = []
-        choice_values_by_list_name = self._get_choices_values()
+        choice_values_by_list_name = self._get_choices_by_list()
 
         for list_name, list_choices in choice_values_by_list_name.items():
             layer_id = build_choices_layer_id(list_name)
