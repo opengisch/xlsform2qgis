@@ -528,7 +528,7 @@ class XlsFormConverter(QObject):
             f"Current container with id {self._container_ids[-1]} not found!"
         )
 
-    def _get_label(self, sheet_row: dict[str, Any]) -> str:
+    def _get_label(self, sheet_row: ParsedSheetRow) -> str:
         default_language = self._settings["default_language"].lower()
 
         fallback_label = sheet_row.get("label", sheet_row["name"]) or ""
@@ -549,7 +549,7 @@ class XlsFormConverter(QObject):
 
         return strip_html(sheet_row.get(label_key, fallback_label) or "")
 
-    def _get_field_def_alias(self, sheet_row: dict[str, Any]) -> AliasDef:
+    def _get_field_def_alias(self, sheet_row: ParsedSheetRow) -> AliasDef:
         alias_str = self._get_label(sheet_row)
 
         if not alias_str:
@@ -571,7 +571,7 @@ class XlsFormConverter(QObject):
                 "alias_expression": alias_expression.to_qgis(),
             }
 
-    def _get_field_def(self, sheet_row: dict[str, Any]) -> WeakFieldDef:
+    def _get_field_def(self, sheet_row: ParsedSheetRow) -> WeakFieldDef:
         field_def: WeakFieldDef = {}
         indices = self.survey_sheet.indices
         xlsform_type = get_xlsform_type(sheet_row["type"])
