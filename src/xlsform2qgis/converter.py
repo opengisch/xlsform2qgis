@@ -1651,7 +1651,6 @@ def widget_begin_repeat(ctx: WidgetContext) -> ParsedRow:
     form_field: WeakFormItemDef = {
         "item_id": relation_id,
         "field_name": relation_id,
-        "label": strip_html(ctx.row["label"] or ""),
         "type": "relation",
     }
 
