@@ -15,6 +15,9 @@ if TYPE_CHECKING:
     from xlsform2qgis.expressions.expression import ExpressionContext
 
 
+_NULL = "NULL"
+
+
 class FunctionSpec:
     expression: str | Callable[..., str] | None
 
@@ -79,7 +82,13 @@ class FunctionSpec:
 
         if callable(self.expression):
             assert args_count == -1
-            return self.expression(*args, ctx=ctx).format(*args)
+
+            result = self.expression(*args, ctx=ctx)
+
+            if result is None:
+                return "NULL"
+            else:
+                return result.format(*args)
 
         if len(args) > args_count + 1:
             raise ValueError(
@@ -243,7 +252,9 @@ def _normalize_params(func: Callable[..., str], params: list[int] | None) -> lis
     return sorted(set(params))
 
 
-def _wrap_registered_function(func: Callable[..., str]) -> Callable[..., str]:
+def _wrap_registered_function(
+    func: Callable[..., str],
+) -> Callable[..., str]:
     # `FunctionSpec.format` passes function name as first argument; decorators expose a cleaner API
     # where registered callables only define XLSForm function arguments.
     def wrapped(*args: str, ctx: ExpressionContext) -> str:
@@ -253,7 +264,10 @@ def _wrap_registered_function(func: Callable[..., str]) -> Callable[..., str]:
 
 
 @overload
-def register_function(func: Callable[..., str], /) -> Callable[..., str]: ...
+def register_function(
+    func: Callable[..., str],
+    /,
+) -> Callable[..., str]: ...
 
 
 @overload
@@ -388,3 +402,8 @@ def max(*args: str, ctx: ExpressionContext) -> str:
 @register_function(name="sum", args_count=(1, None))
 def sum(*args: str, ctx: ExpressionContext) -> str:
     return "sum({})".format(_args_to_placeholders(args))
+
+
+@register_function(name="version")
+def version(ctx: ExpressionContext) -> str:
+    return ctx.survey_settings.get("version", _NULL)

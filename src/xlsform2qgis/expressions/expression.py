@@ -23,6 +23,7 @@ from xlsform2qgis.expressions.parser import (
     parse_template,
 )
 from xlsform2qgis.expressions.utils import SINGLE_QUOTE, wrap_field
+from xlsform2qgis.type_defs import XlsformSettings
 
 
 class QgisRenderType(StrEnum):
@@ -36,6 +37,7 @@ class ExpressionContext:
     calculate_expressions: dict[str, "Expression"]
     parser_type: ParserType
     choices_by_list: dict[str, list[ChoicesDef]]
+    survey_settings: XlsformSettings
     skip_expression_errors: bool = False
 
 

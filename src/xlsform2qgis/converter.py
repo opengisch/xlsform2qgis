@@ -423,6 +423,7 @@ class XlsFormConverter(QObject):
             parser_type=parser_type,
             skip_expression_errors=self._skip_failed_expressions,
             choices_by_list=self._get_choices_by_list(),
+            survey_settings=self._settings,
         )
 
     def get_expression(

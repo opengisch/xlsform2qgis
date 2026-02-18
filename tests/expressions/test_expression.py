@@ -1,4 +1,5 @@
 import re
+from typing import cast
 
 import pytest
 from json2qgis.type_defs import ChoicesDef
@@ -10,6 +11,7 @@ from xlsform2qgis.expressions.expression import (
 )
 from xlsform2qgis.expressions.parser import ParseError, ParserType
 from xlsform2qgis.expressions.utils import convert_date_format, convert_datetime_format
+from xlsform2qgis.type_defs import XlsformSettings
 
 
 def build_context(
@@ -22,6 +24,9 @@ def build_context(
             {"name": "one", "label": "One"},
         ]
     }
+    survey_settings: XlsformSettings = cast(
+        XlsformSettings, {"version": "Version 1.2.3"}
+    )
     context = ExpressionContext(
         current_field="field001",
         calculate_expressions={
@@ -32,11 +37,13 @@ def build_context(
                     calculate_expressions={},
                     parser_type=parser_type,
                     choices_by_list=choices_by_list,
+                    survey_settings=survey_settings,
                 ),
             )
         },
         parser_type=parser_type,
         choices_by_list=choices_by_list,
+        survey_settings=survey_settings,
     )
     if expressions:
         for name, expr in expressions.items():
@@ -129,6 +136,11 @@ def test_regex_function_conversion(ctx) -> None:
 def test_today_function_conversion(ctx) -> None:
     expr = Expression("today()", ctx)
     assert expr.to_qgis() == "format_date(now(), 'yyyy-MM-dd')"
+
+
+def test_version_function_conversion(ctx) -> None:
+    expr = Expression("version()", ctx)
+    assert expr.to_qgis() == "Version 1.2.3"
 
 
 def test_true_false_literals(ctx) -> None:
