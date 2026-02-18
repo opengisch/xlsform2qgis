@@ -419,6 +419,9 @@ class _ExpressionParser:
                         continue
                     raise ParseError("Operator cannot start an expression", token.start)
                 if last_significant.type == TokenType.OPERATOR:
+                    if token.value in unary_ops:
+                        last_significant = token
+                        continue
                     raise ParseError("Consecutive operators", token.start)
                 if (
                     last_significant.type == TokenType.PUNCTUATION
@@ -580,6 +583,16 @@ class _ExpressionParser:
         if token.type == TokenType.OPERATOR and token.value in {"not", "+", "-"}:
             self._advance()
             operand = self._parse_unary()
+            if (
+                token.value == "-"
+                and isinstance(operand, Literal)
+                and operand.type == LiteralType.NUMBER
+            ):
+                return Literal(
+                    f"-{operand.value}",
+                    f"-{operand.raw_value}",
+                    LiteralType.NUMBER,
+                )
             return UnaryOp(token.value, operand)
         return self._parse_primary()
 

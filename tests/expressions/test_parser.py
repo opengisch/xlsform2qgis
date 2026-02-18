@@ -231,6 +231,17 @@ class TestXlsformParser:
         assert isinstance(ast, Current)
         assert ast.raw_value == "."
 
+    def test_parse_expression_current_value_greater_than_negative_value(self):
+        ast = parse_expression(". > -1")
+
+        assert isinstance(ast, BinaryOp)
+        assert ast.operator == ">"
+        assert isinstance(ast.left, Current)
+        assert ast.left.raw_value == "."
+        assert isinstance(ast.right, Literal)
+        assert ast.right.value == "-1"
+        assert ast.right.raw_value == "-1"
+
     def test_parenthesized_single_expression_is_unwrapped(self):
         ast = parse_expression("(${field})")
 

@@ -126,6 +126,17 @@ class TestTokenizerCurrent:
             TokenType.NUMBER,
         ]
 
+    def test_current_in_expression_comparison(self):
+        tokens = _strip_eof(_tokens(". > -1"))
+        assert [t.type for t in tokens] == [
+            TokenType.CURRENT,
+            TokenType.OPERATOR,
+            TokenType.NUMBER,
+        ]
+        assert tokens[0].value == "."
+        assert tokens[1].value == ">"
+        assert tokens[2].value == "-1"
+
 
 class TestTokenizerOperators:
     def test_symbol_operators(self):

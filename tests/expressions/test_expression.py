@@ -150,6 +150,11 @@ def test_unary_operator_parentheses(ctx: ExpressionContext) -> None:
     assert expr.to_qgis() == "- (1 + 2)"
 
 
+def test_unary_operator_with_comparison(ctx: ExpressionContext) -> None:
+    expr = Expression(". > -1", ctx)
+    assert expr.to_qgis() == '"field001" > -1'
+
+
 def test_nested_function_composition(ctx: ExpressionContext) -> None:
     expr = Expression("selected(${choice1}, 'value') and regex(${choice2}, 'b')", ctx)
     assert (
