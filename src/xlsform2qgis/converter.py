@@ -32,6 +32,7 @@ from qgis.PyQt.QtCore import QObject, pyqtSignal
 
 from xlsform2qgis.converter_utils import (
     build_choices_layer_id,
+    build_choices_layer_name,
     get_xlsform_type,
     strip_html,
 )
@@ -940,6 +941,7 @@ class XlsFormConverter(QObject):
 
         for list_name, list_choices in choice_values_by_list_name.items():
             layer_id = build_choices_layer_id(list_name)
+            layer_name = build_choices_layer_name(list_name)
 
             fields = []
             for col_name in list_choices[0].keys():
@@ -954,7 +956,7 @@ class XlsFormConverter(QObject):
             choices_layers.append(
                 generate_layer_def(
                     layer_id=layer_id,
-                    name=layer_id,
+                    name=layer_name,
                     crs="EPSG:4326",
                     fields=fields,
                     is_private=True,

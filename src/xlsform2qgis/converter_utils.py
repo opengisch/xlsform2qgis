@@ -1,4 +1,5 @@
 import re
+from hashlib import md5
 from html.parser import HTMLParser
 from io import StringIO
 
@@ -77,5 +78,12 @@ def get_xlsform_type(raw_xls_type: str) -> str:
     return xlsform_type
 
 
-def build_choices_layer_id(*parts: str) -> str:
+def build_choices_layer_name(*parts: str) -> str:
     return "_".join(["list", *parts])
+
+
+def build_choices_layer_id(*parts: str) -> str:
+    prefix = build_choices_layer_name(*parts)
+    md5_hash = md5(prefix.encode()).hexdigest()
+
+    return f"{prefix}_{md5_hash}"
