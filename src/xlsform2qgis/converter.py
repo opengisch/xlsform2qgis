@@ -812,10 +812,13 @@ class XlsFormConverter(QObject):
 
             form_items.append(
                 generate_form_item_def(
-                    visibility_expression=visibility_expr,
-                    is_label_on_top=True,
-                    **{**form_item_default, **parsed_row.form_field},
-                    parent_id=parent_id,
+                    **{
+                        "visibility_expression": visibility_expr,
+                        "is_label_on_top": True,
+                        **form_item_default,
+                        **parsed_row.form_field,
+                        "parent_id": parent_id,
+                    }
                 )
             )
 
