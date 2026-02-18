@@ -86,3 +86,21 @@ def test_parsed_sheet_skips_null_qvariant_headers(monkeypatch) -> None:
     assert sheet.indices["type"] == 0
     assert sheet.indices["name"] == 2
     assert sheet.indices[""] == -1
+
+
+def test_parsed_sheet_normalizes_headers_from_first_feature(monkeypatch) -> None:
+    def factory(*_args, **_kwargs) -> _FakeQgsVectorLayer:
+        return _FakeQgsVectorLayer(
+            ["Field1", "Field2"],
+            feature_count=2,
+            header_attrs=[" Type ", "Constraint Message", QVariant(), "Name"],
+        )
+
+    _patch_qgs_vector_layer(monkeypatch, factory)
+
+    sheet = ParsedSheet("survey", "dummy.xlsx")
+
+    assert sheet.skip_first_row is True
+    assert sheet.indices["type"] == 0
+    assert sheet.indices["constraint_message"] == 1
+    assert sheet.indices["name"] == 3
