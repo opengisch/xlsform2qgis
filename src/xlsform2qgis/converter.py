@@ -1703,6 +1703,8 @@ def main():
     )
 
     if args.output_json:
+        Path(args.output_json).parent.mkdir(parents=True, exist_ok=True)
+
         with open(args.output_json, "w") as f:
             json.dump(output_json, f, indent=4, sort_keys=True)
 
