@@ -2,7 +2,7 @@ from collections.abc import Callable
 
 from qgis.PyQt.QtCore import QVariant
 
-import xlsform2qgis.converter as converter_module
+import xlsform2qgis.sheet_parser as sheet_parser_module
 from xlsform2qgis.converter import ParsedSheet
 
 
@@ -51,7 +51,7 @@ def _patch_qgs_vector_layer(
     monkeypatch,
     factory: Callable[..., _FakeQgsVectorLayer],
 ) -> None:
-    monkeypatch.setattr(converter_module, "QgsVectorLayer", factory)
+    monkeypatch.setattr(sheet_parser_module, "QgsVectorLayer", factory)
 
 
 def test_parsed_sheet_normalizes_field_names(monkeypatch) -> None:

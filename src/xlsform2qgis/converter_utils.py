@@ -68,3 +68,14 @@ def parse_xlsform_select_from_file_parameters(
         list_value = "label"
 
     return list_key, list_value
+
+
+def get_xlsform_type(raw_xls_type: str) -> str:
+    xlsform_type, *_ = str(raw_xls_type).split(" ", 1)
+    xlsform_type = xlsform_type.strip().lower()
+
+    return xlsform_type
+
+
+def build_choices_layer_id(*parts: str) -> str:
+    return "_".join(["list", *parts])
