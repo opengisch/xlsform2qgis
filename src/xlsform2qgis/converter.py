@@ -1275,6 +1275,8 @@ def widget_hidden(ctx: WidgetContext) -> ParsedRow:
 def widget_today(ctx: WidgetContext) -> ParsedRow:
     return ParsedRow(
         field={
+            "type": "date",
+            "name": ctx.row["name"],
             "widget_type": "Hidden",
             "default_value": "format_date(now(), 'yyyy-MM-dd')",
             "set_default_value_on_update": False,
@@ -1290,6 +1292,8 @@ def widget_today(ctx: WidgetContext) -> ParsedRow:
 def widget_start(ctx: WidgetContext) -> ParsedRow:
     return ParsedRow(
         field={
+            "type": "datetime",
+            "name": ctx.row["name"],
             "widget_type": "Hidden",
             "default_value": "format_date(now(), 'yyyy-MM-dd hh:mm:ss')",
             "set_default_value_on_update": False,
@@ -1305,6 +1309,8 @@ def widget_start(ctx: WidgetContext) -> ParsedRow:
 def widget_end(ctx: WidgetContext) -> ParsedRow:
     return ParsedRow(
         field={
+            "type": "datetime",
+            "name": ctx.row["name"],
             "widget_type": "Hidden",
             "default_value": "format_date(now(), 'yyyy-MM-dd hh:mm:ss')",
             "set_default_value_on_update": True,
@@ -1320,6 +1326,8 @@ def widget_end(ctx: WidgetContext) -> ParsedRow:
 def widget_username(ctx: WidgetContext) -> ParsedRow:
     return ParsedRow(
         field={
+            "type": "string",
+            "name": ctx.row["name"],
             "widget_type": "Hidden",
             "default_value": "@cloud_username",
             "set_default_value_on_update": False,
@@ -1335,6 +1343,8 @@ def widget_username(ctx: WidgetContext) -> ParsedRow:
 def widget_email(ctx: WidgetContext) -> ParsedRow:
     return ParsedRow(
         field={
+            "type": "string",
+            "name": ctx.row["name"],
             "widget_type": "Hidden",
             "default_value": "@cloud_useremail",
             "set_default_value_on_update": False,
