@@ -167,7 +167,7 @@ class TestXlsformParser:
     def test_invalid_number_params(self):
         with pytest.raises(
             ParseError,
-            match="Invalid number of function arguments, got 2 `string-length`",
+            match="Invalid number of function arguments, expected \\(0, 1\\), got 2 `string-length`",
         ):
             parse_expression("string-length(${arg}, 'hello')")
 

@@ -488,8 +488,13 @@ class _ExpressionParser:
             raise ParseError("Unknown function", callee_token.start, callee_token)
 
         if not spec.validate(len(args)):
+            if not callable(spec.expected_args_count):
+                expected_args_count = str(spec.expected_args_count)
+            else:
+                expected_args_count = "callable"
+
             raise ParseError(
-                f"Invalid number of function arguments, got {len(args)}",
+                f"Invalid number of function arguments, expected {expected_args_count}, got {len(args)}",
                 callee_token.start,
                 callee_token,
             )
