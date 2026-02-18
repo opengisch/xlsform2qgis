@@ -1238,7 +1238,7 @@ def widget_calculate(ctx: WidgetContext) -> ParsedRow:
         },
         form_field={
             "is_read_only": True,
-            "show_label": False,
+            "show_label": True,
         },
     )
 
@@ -1265,8 +1265,8 @@ def widget_hidden(ctx: WidgetContext) -> ParsedRow:
             **field,
         },
         form_field={
-            "is_read_only": True,
             "show_label": False,
+            "is_read_only": True,
         },
     )
 
