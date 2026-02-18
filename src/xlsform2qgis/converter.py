@@ -529,25 +529,22 @@ class XlsFormConverter(QObject):
         )
 
     def _get_label(self, sheet_row: ParsedSheetRow) -> str:
+        label = ""
         default_language = self._settings["default_language"].lower()
+        if default_language:
+            label_key = f"label::{default_language}"
 
-        fallback_label = sheet_row.get("label", sheet_row["name"]) or ""
+            if sheet_row.get(label_key):
+                label = strip_html(sheet_row[label_key] or "")
 
-        if not default_language:
+        if not label:
             logger.debug(
-                "No default language specified, using `label` or `name` column as fallback."
+                f"Label for default language `{default_language}` not found in row index {sheet_row.idx}, falling back to `label` column!"
             )
 
-            return strip_html(fallback_label)
+            label = strip_html(sheet_row["label"] or "")
 
-        label_key = f"label::{default_language}"
-
-        if not sheet_row.get(label_key):
-            logger.warning(
-                f"No label found for default language `{default_language}`, using `label` or `name` column as fallback."
-            )
-
-        return strip_html(sheet_row.get(label_key, fallback_label) or "")
+        return label
 
     def _get_field_def_alias(self, sheet_row: ParsedSheetRow) -> AliasDef:
         alias_str = self._get_label(sheet_row)
@@ -1238,14 +1235,21 @@ def widget_calculate(ctx: WidgetContext) -> ParsedRow:
             }
         )
 
+    if ctx.converter._get_label(ctx.row):
+        widget_type = "TextEdit"
+        show_label = True
+    else:
+        widget_type = "Hidden"
+        show_label = False
+
     return ParsedRow(
         field={
-            "widget_type": "TextEdit",
+            "widget_type": widget_type,
             **form_item,
         },
         form_field={
             "is_read_only": True,
-            "show_label": True,
+            "show_label": show_label,
         },
     )
 
