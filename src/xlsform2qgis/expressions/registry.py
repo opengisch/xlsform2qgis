@@ -3,9 +3,16 @@ from __future__ import annotations
 import inspect
 import re
 from collections.abc import Callable
-from typing import cast, overload
+from typing import TYPE_CHECKING, cast, overload
 
-from xlsform2qgis.expressions.utils import convert_date_format, convert_datetime_format
+from xlsform2qgis.expressions.utils import (
+    convert_date_format,
+    convert_datetime_format,
+    wrap_field,
+)
+
+if TYPE_CHECKING:
+    from xlsform2qgis.expressions.expression import ExpressionContext
 
 
 class FunctionSpec:
@@ -64,7 +71,7 @@ class FunctionSpec:
         expression = self.expression or ""
         return len(re.findall(r"(?<!\{)\{(\d+)\}(?!\})", expression))
 
-    def format(self, /, *args: str) -> str:
+    def format(self, /, *args: str, ctx: ExpressionContext) -> str:
         if self.expression is None:
             raise ValueError("Cannot format expression for unsupported function")
 
@@ -72,7 +79,7 @@ class FunctionSpec:
 
         if callable(self.expression):
             assert args_count == -1
-            return self.expression(*args).format(*args)
+            return self.expression(*args, ctx=ctx).format(*args)
 
         if len(args) > args_count + 1:
             raise ValueError(
@@ -134,7 +141,6 @@ if(
         3,
         "array_foreach(string_to_array({2}, ''), replace({1}, @element, coalesce(array_get(string_to_array({2}, ''), @counter), '')))",
     ),
-    "string-length": FunctionSpec((0, 1), "length({1})"),
     "normalize-space": FunctionSpec(1, "trim( regexp_replace( {1}, '\\s+', ' ') )"),
     "join": FunctionSpec(2, "array_to_string({1}, {2})"),
     "boolean-from-string": FunctionSpec(1, "{1} == 'true' or {1} == '1'"),
@@ -206,6 +212,9 @@ def _infer_params(func: Callable[..., str]) -> list[int]:
     max_args = 0
 
     for param in signature.parameters.values():
+        if param.name == "ctx":
+            continue
+
         if param.kind in (
             inspect.Parameter.POSITIONAL_ONLY,
             inspect.Parameter.POSITIONAL_OR_KEYWORD,
@@ -238,8 +247,8 @@ def _normalize_params(func: Callable[..., str], params: list[int] | None) -> lis
 def _wrap_registered_function(func: Callable[..., str]) -> Callable[..., str]:
     # `FunctionSpec.format` passes function name as first argument; decorators expose a cleaner API
     # where registered callables only define XLSForm function arguments.
-    def wrapped(*args: str) -> str:
-        return func(*args[1:])
+    def wrapped(*args: str, ctx: ExpressionContext) -> str:
+        return func(*args[1:], ctx=ctx)
 
     return wrapped
 
@@ -288,23 +297,35 @@ def register_function(
     return decorator
 
 
+@register_function(name="string-length", args_count=(0, 1))
+def string_length(*args: str, ctx: ExpressionContext) -> str:
+    assert len(args) in (0, 1)
+
+    if args:
+        return f"length({args[0]})"
+    else:
+        return f"length({wrap_field(ctx.current_field)})"
+
+
 @register_function(name="concat", args_count=(1, None))
-def concat(*args: str) -> str:
+def concat(*args: str, ctx: ExpressionContext) -> str:
     return "concat({})".format(", ".join(f"{{{i}}}" for i in range(1, len(args) + 1)))
 
 
 @register_function(name="format-date")
-def format_date(date: str, fmt: str) -> str:
+def format_date(date: str, fmt: str, ctx: ExpressionContext) -> str:
     return f"format_date(to_date({date}), {convert_date_format(fmt)})"
 
 
 @register_function(name="format-date-time")
-def format_date_time(date: str, fmt: str) -> str:
+def format_date_time(date: str, fmt: str, ctx: ExpressionContext) -> str:
     return f"format_date(to_datetime({date}), {convert_datetime_format(fmt)})"
 
 
 @register_function(name="pulldata", params=[3, 4, 5])
-def pulldata(*args: str) -> str:
+def pulldata(*args: str, ctx: ExpressionContext) -> str:
+    assert len(args) in (3, 4, 5)
+
     # TODO @suricactus: implement full spec https://xlsform.org/en/#how-to-pull-data-from-csv
     if args[0] == "'@geopoint'":
         looking_for = args[2].strip().lower()
@@ -321,9 +342,36 @@ def pulldata(*args: str) -> str:
     )
 
 
-@register_function(name="uuid")
-def uuid(length: str | None = None) -> str:
-    if length is None:
+@register_function(name="uuid", params=[0, 1])
+def uuid(*args: str, ctx: ExpressionContext) -> str:
+    assert len(args) in (0, 1)
+
+    if not args:
         return "uuid(format:='WithoutBraces')"
 
-    return "substr(repeat(uuid(format:='WithoutBraces'), ceil({1} / 32)), 1, {1})"
+    return (
+        "substr(repeat(uuid(format:='WithoutBraces'), ceil({0} / 32)), 1, {0})".format(
+            args[0]
+        )
+    )
+
+
+@register_function(name="jr:choice-name")
+def jr_choice_name(choice_value: str, list_name: str, ctx: ExpressionContext) -> str:
+    list_name = list_name.strip("'")
+
+    if list_name not in ctx.choices_by_list:
+        raise ValueError(
+            f"Unknown choices list {list_name}, expected one of {list(ctx.choices_by_list.keys())}!"
+        )
+
+    for choice in ctx.choices_by_list[list_name]:
+        if choice["name"] == choice_value:
+            return choice["label"]
+
+    raise ValueError(f"Value `{choice_value}` not found in {list_name}!")
+
+
+# @register_function(name="max")
+# @register_function(name="min")
+# @register_function(name="version")

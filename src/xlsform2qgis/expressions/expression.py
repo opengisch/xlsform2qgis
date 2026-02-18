@@ -194,7 +194,7 @@ class Expression:
             # the parser should already have raised an error for functions not supported in QGIS
             assert qgis_expr_tmpl.expression
 
-            qgis_expr = qgis_expr_tmpl.format(callee, *rendered_args)
+            qgis_expr = qgis_expr_tmpl.format(callee, *rendered_args, ctx=self.context)
 
             return qgis_expr, 100
 
