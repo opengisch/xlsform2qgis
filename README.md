@@ -2,12 +2,13 @@
 
 A library used to generate a valid QGIS project out of a given XLSForm file.
 
+Compatable with `PyQt5`, `qgis 3.36+` and `python 3.10+`
+
 ## Usage
 
 You can use the library by simply importing:
 
 ```python
-
 from xlsform2qgis.converter import XLSFormConverter
 
 converter = XLSFormConverter("input_xlsform.xls")
