@@ -6,6 +6,9 @@ dist/
 wheels/
 *.egg-info
 
+# mypy type check files
+.mypy_cachegit
+
 # Virtual environments
 .venv
 
@@ -16,3 +19,7 @@ poetry.lock
 # Testing and QGIS related files
 output
 symbology-style.db
+.coverage
+
+# VS Code
+.vscode/*.code-workspace

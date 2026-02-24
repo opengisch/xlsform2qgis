@@ -2,13 +2,16 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python Debugger: Attach",
+            "name": "Python Debugger: Attach to running process",
             "type": "debugpy",
             "request": "attach",
             "connect": {
                 "host": "localhost",
-                "port": 5678
-            }
+                "port": 4100
+            },
+            "pathMappings": [
+            ],
+            "justMyCode": false,
         }
     ]
 }

@@ -8,9 +8,9 @@ You can use the library by simply importing:
 
 ```python
 
-from xlsform2qgis.converter import XLSFormConverter
+from xlsform2qgis.converter import XlsFormConverter
 
-converter = XLSFormConverter("input_xlsform.xls")
+converter = XlsFormConverter("input_xlsform.xls")
 converter.convert("output_qgis_directory")
 ```
 
@@ -50,7 +50,7 @@ ln -s /usr/lib/python3/dist-packages/qgis .venv/lib/python3.12/site-packages/
 ln -s /usr/lib/python3/dist-packages/PyQt5 .venv/lib/python3.12/site-packages/
 ```
 
-5. OPTIONAL Add the `xlsform2qgis` library system wide in all Python scripts as editable module. This will allow developing `xlsform2qgis` in parallel with other projects, such as the [`XLSFormConverter QGIS Plugin`](https://github.com/opengisch/XLSFormConverter/).
+5. OPTIONAL Add the `xlsform2qgis` library system wide in all Python scripts as editable module. This will allow developing `xlsform2qgis` in parallel with other projects, such as the [`XlsFormConverter QGIS Plugin`](https://github.com/opengisch/XlsFormConverter/).
 
 ```
 sudo uv pip install --system --break-system-packages --editable .
