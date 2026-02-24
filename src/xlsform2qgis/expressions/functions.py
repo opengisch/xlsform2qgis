@@ -255,10 +255,14 @@ def _normalize_params(func: Callable[..., str], params: list[int] | None) -> lis
 def _wrap_registered_function(
     func: Callable[..., str],
 ) -> Callable[..., str]:
+    has_ctx = "ctx" in inspect.signature(func).parameters
+
     # `FunctionSpec.format` passes function name as first argument; decorators expose a cleaner API
     # where registered callables only define XLSForm function arguments.
     def wrapped(*args: str, ctx: ExpressionContext) -> str:
-        return func(*args[1:], ctx=ctx)
+        if has_ctx:
+            return func(*args[1:], ctx=ctx)
+        return func(*args[1:])
 
     return wrapped
 
@@ -326,22 +330,22 @@ def string_length(*args: str, ctx: ExpressionContext) -> str:
 
 
 @register_function(name="concat", args_count=(1, None))
-def concat(*args: str, ctx: ExpressionContext) -> str:
+def concat(*args: str) -> str:
     return "concat({})".format(_args_to_placeholders(args))
 
 
 @register_function(name="format-date")
-def format_date(date: str, fmt: str, ctx: ExpressionContext) -> str:
+def format_date(date: str, fmt: str) -> str:
     return f"format_date(to_date({date}), {convert_date_format(fmt)})"
 
 
 @register_function(name="format-date-time")
-def format_date_time(date: str, fmt: str, ctx: ExpressionContext) -> str:
+def format_date_time(date: str, fmt: str) -> str:
     return f"format_date(to_datetime({date}), {convert_datetime_format(fmt)})"
 
 
 @register_function(name="pulldata", params=[3, 4, 5])
-def pulldata(*args: str, ctx: ExpressionContext) -> str:
+def pulldata(*args: str) -> str:
     assert len(args) in (3, 4, 5)
 
     # TODO @suricactus: implement full spec https://xlsform.org/en/#how-to-pull-data-from-csv
@@ -361,7 +365,7 @@ def pulldata(*args: str, ctx: ExpressionContext) -> str:
 
 
 @register_function(name="uuid", params=[0, 1])
-def uuid(*args: str, ctx: ExpressionContext) -> str:
+def uuid(*args: str) -> str:
     assert len(args) in (0, 1)
 
     if not args:
@@ -390,17 +394,17 @@ def jr_choice_name(choice_value: str, list_name: str, ctx: ExpressionContext) ->
 
 
 @register_function(name="min", args_count=(1, None))
-def min(*args: str, ctx: ExpressionContext) -> str:
+def min(*args: str) -> str:
     return "min({})".format(_args_to_placeholders(args))
 
 
 @register_function(name="max", args_count=(1, None))
-def max(*args: str, ctx: ExpressionContext) -> str:
+def max(*args: str) -> str:
     return "max({})".format(_args_to_placeholders(args))
 
 
 @register_function(name="sum", args_count=(1, None))
-def sum(*args: str, ctx: ExpressionContext) -> str:
+def sum(*args: str) -> str:
     return "sum({})".format(_args_to_placeholders(args))
 
 
