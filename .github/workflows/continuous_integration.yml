@@ -1,0 +1,30 @@
+name: Continuous integration
+
+on:
+  pull_request:
+    branches:
+      - master
+  push:
+    branches:
+      - master
+
+jobs:
+  code_check:
+    name: Code check
+    runs-on: ubuntu-24.04
+    steps:
+
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.12
+          cache: 'pip'
+
+      - name: Install formatter
+        run: pip install pre_commit
+
+      - name: Check format
+        run: python -m pre_commit run --all-files
