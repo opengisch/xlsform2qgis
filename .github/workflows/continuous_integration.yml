@@ -43,9 +43,6 @@ jobs:
       QT_QPA_PLATFORM: offscreen
 
     steps:
-      - name: Install Node.js
-        run: apt-get update && apt-get install -y nodejs
-
       - name: Checkout repo
         uses: actions/checkout@v4
 
