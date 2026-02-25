@@ -80,3 +80,26 @@ To run a specific test:
 ```
 uv run pytest -k test_converter
 ```
+
+### Running github actions locally (act)
+
+1. Install [Act](https://github.com/nektos/act)
+
+Run all jobs with:
+
+```
+act
+```
+
+To run a specific job:
+
+```
+act -j code_check
+act -j unit_tests
+```
+
+To run the unit tests against a specific QGIS version (instead of all matrix values):
+
+```
+act -j unit_tests --matrix qgis-tag:3.40
+```
