@@ -51,6 +51,7 @@ jobs:
 
       - name: Install dependencies
         run: |
+          # using `--system-site-packages` gives access to qgis and other system libraries
           uv venv --system-site-packages
           uv sync --group dev
 
