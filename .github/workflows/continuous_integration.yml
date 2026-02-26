@@ -28,3 +28,32 @@ jobs:
 
       - name: Check format
         run: python -m pre_commit run --all-files
+
+  unit_tests:
+    name: Unit tests - QGIS:${{ matrix.qgis-tag }}
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        qgis-tag: ["3.38", "3.40", "latest"]
+
+    container:
+      image: qgis/qgis:${{ matrix.qgis-tag }}
+
+    env:
+      QT_QPA_PLATFORM: offscreen
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: |
+          # using `--system-site-packages` gives access to qgis and other system libraries
+          uv venv --system-site-packages
+          uv sync --group dev
+
+      - name: Run tests
+        run: uv run pytest
