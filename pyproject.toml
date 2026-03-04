@@ -1,15 +1,36 @@
 [project]
 name = "xlsform2qgis"
 version = "0.1.0"
-description = ""
+description = "A library to convert XLSForms to QGIS project files"
 authors = [
     {name = "Mathieu Pelerin",email = "mathieu@opengis.ch"},
-    {name = "Ivan Ivanov",email = "ivan@opengis.ch"}
+    {name = "Ivan Ivanov",email = "ivan@opengis.ch"},
+    {name = "Rakan Farhouda",email = "rakan@opengis.ch"}
 ]
+license = { file = "LICENSE" }
+keywords = [ "xlsform", "QGIS", "converter" ]
 readme = "README.md"
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: End Users/Desktop",
+    "Topic :: Scientific/Engineering :: GIS",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: OS Independent",
+]
 requires-python = ">=3.10,<4.0"
 dependencies = [
 ]
+
+[project.urls]
+homepage = "https://github.com/opengisch/xlsform2qgis"
+documentation = "https://github.com/opengisch/xlsform2qgis"
+repository = "https://github.com/opengisch/xlsform2qgis"
+tracker = "https://github.com/opengisch/xlsform2qgis/issues"
 
 [build-system]
 requires = ["uv_build>=0.9.13,<0.10.0"]
