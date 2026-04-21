@@ -4,6 +4,16 @@ A library used to generate a valid QGIS project out of a given XLSForm file.
 
 Compatable with `PyQt5`, `qgis 3.36+` and `python 3.10+`
 
+## Installation
+
+> **Prerequisite:** This library requires QGIS to be installed on your system, as it depends on `qgis` and `PyQt` libraries that are not available on PyPI. Install QGIS from [qgis.org](https://qgis.org/en/site/forusers/download.html) before proceeding.
+
+Install the package from PyPI:
+
+```
+pip install xlsform2qgis
+```
+
 ## Usage
 
 You can use the library by simply importing:
