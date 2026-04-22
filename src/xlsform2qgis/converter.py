@@ -1782,7 +1782,7 @@ class XLSFormConverter(QObject):
         self.output_project.writeEntry("qfieldsync", "initialMapMode", "digitize")
 
         # Turn the QField feature form wizard mode on
-        self.output_project.writeEntry(
+        self.output_project.writeEntryBool(
             "qfieldsync", "featureFormWizardModeEnabled", True
         )
 
