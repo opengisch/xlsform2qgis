@@ -1781,6 +1781,11 @@ class XLSFormConverter(QObject):
         # Set QField state to digitize when first opening the generated project
         self.output_project.writeEntry("qfieldsync", "initialMapMode", "digitize")
 
+        # Turn the QField feature form wizard mode on
+        self.output_project.writeEntryBool(
+            "qfieldsync", "featureFormWizardModeEnabled", True
+        )
+
         if self.output_project.crs().authid() == "EPSG:3857":
             display_settings = self.output_project.displaySettings()
 
